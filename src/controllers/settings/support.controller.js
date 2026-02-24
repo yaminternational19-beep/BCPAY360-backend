@@ -1,0 +1,155 @@
+import db from "../../models/db.js";
+
+/* =========================================================
+   GET ALL SUPPORT TICKETS (COMPANY ADMIN / HR)
+   Filters: branch_id, status, search
+========================================================= */
+export const getAllSupportTickets = async (req, res) => {
+  try {
+    const { company_id } = req.user;
+    const { branch_id, status, search } = req.query;
+
+    let conditions = [`company_id = ?`];
+    let params = [company_id];
+
+    if (branch_id) {
+      conditions.push(`branch_id = ?`);
+      params.push(branch_id);
+    }
+
+    if (status) {
+      conditions.push(`status = ?`);
+      params.push(status);
+    }
+
+    if (search) {
+      conditions.push(
+        `(employee_name LIKE ? OR employee_email LIKE ? OR category LIKE ?)`
+      );
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+    }
+
+    const [tickets] = await db.query(
+      `SELECT
+         id,
+         employee_name,
+         employee_email,
+         branch_id,
+         category,
+         status,
+         created_at
+       FROM company_support_tickets
+       WHERE ${conditions.join(" AND ")}
+       ORDER BY created_at DESC`,
+      params
+    );
+
+    res.json({
+      success: true,
+      data: tickets
+    });
+  } catch (error) {
+    console.error("getAllSupportTickets error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch support tickets"
+    });
+  }
+};
+
+/* =========================================================
+   GET SINGLE SUPPORT TICKET (DETAIL VIEW)
+========================================================= */
+export const getSupportTicketById = async (req, res) => {
+  try {
+    const { company_id } = req.user;
+    const { id } = req.params;
+
+    const [[ticket]] = await db.query(
+      `SELECT *
+       FROM company_support_tickets
+       WHERE id = ? AND company_id = ?`,
+      [id, company_id]
+    );
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: "Support ticket not found"
+      });
+    }
+
+    res.json({
+      success: true,
+      data: ticket
+    });
+  } catch (error) {
+    console.error("getSupportTicketById error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch support ticket"
+    });
+  }
+};
+
+/* =========================================================
+   RESPOND TO SUPPORT TICKET (AUTO CLOSE)
+========================================================= */
+export const respondToSupportTicket = async (req, res) => {
+  try {
+    const { company_id, role, id: responder_id } = req.user;
+    const { id } = req.params;
+    const { response } = req.body;
+
+    if (!response || !response.trim()) {
+      return res.status(422).json({
+        success: false,
+        message: "Response is required"
+      });
+    }
+
+    const [[ticket]] = await db.query(
+      `SELECT status
+       FROM company_support_tickets
+       WHERE id = ? AND company_id = ?`,
+      [id, company_id]
+    );
+
+    if (!ticket) {
+      return res.status(404).json({
+        success: false,
+        message: "Support ticket not found"
+      });
+    }
+
+    if (ticket.status === "CLOSED") {
+      return res.status(409).json({
+        success: false,
+        message: "Ticket is already closed"
+      });
+    }
+
+    await db.query(
+      `UPDATE company_support_tickets
+       SET
+         response = ?,
+         responded_by_role = ?,
+         responded_by_id = ?,
+         responded_at = NOW(),
+         status = 'CLOSED'
+       WHERE id = ?`,
+      [response, role, responder_id, id]
+    );
+
+    res.json({
+      success: true,
+      message: "Response sent and ticket closed"
+    });
+  } catch (error) {
+    console.error("respondToSupportTicket error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to respond to support ticket"
+    });
+  }
+};

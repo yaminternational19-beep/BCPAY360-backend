@@ -1,0 +1,26 @@
+# env
+.env
+.ev.example
+# DO NOT ignore .env.example - it should be committed
+
+# node
+node_modules/
+
+# uploads (now using S3)
+uploads/
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+*.log
+
+# PM2
+.pm2/
+
+# OS
+.DS_Store
+Thumbs.db
+
+audit_report.json
