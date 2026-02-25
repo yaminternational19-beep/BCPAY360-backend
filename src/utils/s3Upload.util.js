@@ -45,31 +45,53 @@ const validateContext = (context) => {
  * Generates a consistent, tenant-isolated S3 key.
  * @param {Object} context - { companyId, branchId, employeeCode }
  * @param {Object} file - { fieldname, originalname }
+ * @param {Object} meta - { year, month } (Optional, for salary/govt docs)
  */
-export const generateEmployeeS3Key = (context, file) => {
+
+
+export const generateEmployeeS3Key = (context, file, meta = {}) => {
     validateContext(context);
+
     const { companyId, branchId, employeeCode } = context;
     const { fieldname, originalname } = file;
+    const { year, month, periodType } = meta;
 
-    const basePath = `companies/${companyId}/branches/${branchId}/employees/${employeeCode}`;
-    let subPath;
-
-    const docType = (fieldname || "").toUpperCase();
-    if (docType === "PROFILE_PHOTO") {
-        subPath = "profile";
-    } else if (GOVT_DOCS.includes(docType)) {
-        const year = new Date().getFullYear();
-        subPath = `documents/govt/${docType}/${year}`;
-    } else {
-        subPath = `documents/personal/${docType || "OTHER"}`;
-    }
-
-    // Preserve original filename but timestamp it for unique versions if needed
-    // However, for profile photo we might want to overwrite or keep it clean
+    const basePath = `companies/${companyId}/branches/${branchId}/employees/${employeeCode}/documents`;
+    const docType = (fieldname || "OTHER").toUpperCase();
     const timestamp = Date.now();
     const cleanFileName = originalname.replace(/\s+/g, "_");
 
-    return `${basePath}/${subPath}/${timestamp}_${cleanFileName}`;
+    let subPath;
+
+   
+
+    // console.log("====== S3 KEY DEBUG START ======");
+    // console.log("DOC TYPE:", docType);
+    // console.log("YEAR:", year);
+    // console.log("MONTH:", month);
+    // console.log("PERIOD TYPE:", periodType);
+    // console.log("META OBJECT:", meta);
+
+    if (periodType === "MONTH") {
+        const formattedMonth = String(month).padStart(2, "0");
+        subPath = `company_docs/${docType}/${year}/${formattedMonth}`;
+        console.log("Branch: MONTH → company_docs");
+
+    } else if (periodType === "FY") {
+        subPath = `company_docs/${docType}/${year}`;
+        console.log("Branch: FY → company_docs");
+
+    } else {
+        subPath = `personal/${docType}`;
+        console.log("Branch: DEFAULT → personal");
+    }
+
+    const finalKey = `${basePath}/${subPath}/${timestamp}_${cleanFileName}`;
+
+    // console.log("FINAL S3 KEY:", finalKey);
+    // console.log("====== S3 KEY DEBUG END ======");
+
+    return finalKey;
 };
 
 /**

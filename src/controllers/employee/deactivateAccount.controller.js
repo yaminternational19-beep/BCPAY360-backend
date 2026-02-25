@@ -8,11 +8,29 @@ export const deactivateAccount = async (req, res) => {
 
   try {
     const employeeId = req.user.id;
+    const { category, reason } = req.body;
 
     if (!employeeId) {
       return res.status(401).json({
         success: false,
         message: "Unauthorized"
+      });
+    }
+
+    /* ==============================
+       VALIDATION
+    ============================== */
+    if (!category) {
+      return res.status(400).json({
+        success: false,
+        message: "Deactivation category is required"
+      });
+    }
+
+    if (category === "OTHER" && !reason) {
+      return res.status(400).json({
+        success: false,
+        message: "Reason is required when category is OTHER"
       });
     }
 
@@ -45,7 +63,7 @@ export const deactivateAccount = async (req, res) => {
     }
 
     /* ==============================
-       UPDATE STATUS
+       UPDATE EMPLOYEE STATUS
     ============================== */
     await connection.query(
       `UPDATE employees
@@ -55,8 +73,21 @@ export const deactivateAccount = async (req, res) => {
     );
 
     /* ==============================
+       INSERT DEACTIVATION REASON
+    ============================== */
+    await connection.query(
+      `INSERT INTO employee_deactivation_reasons 
+       (employee_id, category, reason)
+       VALUES (?, ?, ?)`,
+      [
+        employeeId,
+        category,
+        category === "OTHER" ? reason : null
+      ]
+    );
+
+    /* ==============================
        LOGOUT FROM ALL DEVICES
-       (Clear Sessions)
     ============================== */
     await connection.query(
       `DELETE FROM employee_sessions

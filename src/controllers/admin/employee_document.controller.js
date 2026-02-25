@@ -9,6 +9,7 @@ const MODULE_NAME = "EMPLOYEE_DOCUMENT_CONTROLLER";
 export const add_employee_document = async (req, res) => {
   const { employee_id, document_type, document_number } = req.body;
 
+  
   try {
     // Validate required fields
     if (!employee_id || !document_type) {

@@ -299,7 +299,8 @@ export const uploadEmployeeForm = async (req, res) => {
       {
         fieldname: formCode,
         originalname: req.file.originalname
-      }
+      },
+      { year, month, periodType }
     );
 
     /* =====================
@@ -448,7 +449,8 @@ export const replaceEmployeeForm = async (req, res) => {
       {
         fieldname: formCode,
         originalname: req.file.originalname
-      }
+      },
+      { year, month, periodType }
     );
 
     /* =====================

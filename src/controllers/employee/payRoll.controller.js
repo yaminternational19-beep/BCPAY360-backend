@@ -12,178 +12,122 @@ export const getAllEmployeePayrollData = async (req, res) => {
 
     const [rows] = await db.query(`
       SELECT
-  pee.id AS payroll_entry_id,
-  pee.employee_id,
+        pee.employee_id,
+        pee.base_salary,
+        pee.gross_salary,
+        pee.net_salary,
+        pee.bonus,
+        pee.incentive,
+        pee.pf_applicable,
+        pee.pf_amount,
+        pee.other_deductions,
 
-  -- Salary figures
-  pee.base_salary,
-  pee.gross_salary,
-  pee.net_salary,
-  pee.bonus,
-  pee.incentive,
-  pee.pf_applicable,
-  pee.pf_amount,
-  pee.other_deductions,
+        pb.pay_month,
+        pb.pay_year,
 
-  -- Payroll period
-  pb.pay_month,
-  pb.pay_year,
+        pee.payment_status,
+        CASE
+          WHEN pee.payment_status = 'SUCCESS' THEN pee.paid_at
+          ELSE NULL
+        END AS credited_on,
 
-  -- Status (source of truth)
-  pee.payment_status,
+        ep.bank_name,
 
-  -- Credited date (only if SUCCESS)
-  CASE
-    WHEN pee.payment_status = 'SUCCESS' THEN pee.paid_at
-    ELSE NULL
-  END AS credited_on,
+        efd.storage_provider,
+        efd.storage_object_key
 
-  -- Bank details (employee profile)
-  ep.bank_name,
-  ep.ifsc_code,
-  ep.account_number,
+      FROM payroll_employee_entries pee
+      JOIN payroll_batches pb
+        ON pb.id = pee.payroll_batch_id
 
-  -- Payslip document (latest <= payroll month)
-  efd.storage_provider,
-  efd.storage_bucket,
-  efd.storage_object_key,
-  efd.file_path
+      LEFT JOIN employee_profiles ep
+        ON ep.employee_id = pee.employee_id
 
-FROM payroll_employee_entries pee
+      LEFT JOIN employee_form_documents efd
+        ON efd.employee_id = pee.employee_id
+        AND LOWER(efd.form_code) = 'salary'
+        AND efd.period_type = 'MONTH'
+        AND efd.doc_year = pb.pay_year
+        AND efd.doc_month = pb.pay_month
+        AND efd.is_employee_visible = 1
 
-JOIN payroll_batches pb
-  ON pb.id = pee.payroll_batch_id
-
-LEFT JOIN employee_profiles ep
-  ON ep.employee_id = pee.employee_id
-
-LEFT JOIN employee_form_documents efd
-  ON efd.employee_id = pee.employee_id
-  AND LOWER(efd.form_code) = 'salary'
-  AND efd.period_type = 'MONTH'
-  AND efd.is_employee_visible = 1
-  AND (
-       (efd.doc_year < pb.pay_year)
-       OR
-       (efd.doc_year = pb.pay_year AND efd.doc_month <= pb.pay_month)
-  )
-
-WHERE pee.employee_id = ?
-
-ORDER BY
-  pb.pay_year DESC,
-  pb.pay_month DESC,
-  efd.doc_year DESC,
-  efd.doc_month DESC;
-
-
-
-
+      WHERE pee.employee_id = ?
+      ORDER BY pb.pay_year DESC, pb.pay_month DESC
     `, [employeeId]);
 
     if (!rows.length) {
-      return res.json({ salary: null });
-    }
-
-    const r = rows[0];
-
-    /* ===============================
-       BUSINESS LOGIC (CLEAN)
-    ================================ */
-
-    // Incentives
-    const bonusAmount = (r.bonus) > 0 ? (r.bonus) : 0;
-    const incentiveAmount = Number(r.incentive) > 0 ? Number(r.incentive) : 0;
-
-    const incentives = [];
-    if (bonusAmount > 0) {
-      incentives.push({ type: "BONUS", amount: bonusAmount });
-    }
-    if (incentiveAmount > 0) {
-      incentives.push({ type: "INCENTIVE", amount: incentiveAmount });
-    }
-
-    const totalIncentives = bonusAmount + incentiveAmount;
-
-    // Deductions
-    const pfApplicable =
-      Boolean(r.pf_applicable) && Number(r.pf_amount) > 0;
-
-    const pfAmount = pfApplicable ? Number(r.pf_amount) : 0;
-    const otherDeductionAmount =
-      Number(r.other_deductions) > 0 ? Number(r.other_deductions) : 0;
-
-    const deductions = [];
-    if (pfApplicable) {
-      deductions.push({
-        type: "PROVIDENT_FUND",
-        applicable: true,
-        amount: pfAmount
-      });
-    }
-    if (otherDeductionAmount > 0) {
-      deductions.push({
-        type: "OTHER",
-        amount: otherDeductionAmount
+      return res.json({
+        status: true,
+        salary: null
       });
     }
 
-    const totalDeductions = pfAmount + otherDeductionAmount;
+    const salaryHistory = [];
 
+    for (const r of rows) {
 
+      let viewUrl = null;
+      let downloadUrl = null;
 
-    let payslip_url = null;
+      if (r.storage_provider === "S3" && r.storage_object_key) {
+        viewUrl = await getS3SignedUrl(
+          r.storage_object_key,
+          SIGNED_URL_TTL,
+          { disposition: "inline" }
+        );
 
-    if (
-      r.storage_provider === "S3" &&
-      r.storage_bucket &&
-      r.storage_object_key
-    ) {
-      payslip_url = await getS3SignedUrl({
-        bucket: r.storage_bucket,
-        key: r.storage_object_key,
-        expiresIn: SIGNED_URL_TTL,     // 3 days
-        ...INLINE                      // view in browser
+        downloadUrl = await getS3SignedUrl(
+          r.storage_object_key,
+          SIGNED_URL_TTL,
+          { disposition: "attachment" }
+        );
+      }
+
+      const bonusAmount = Number(r.bonus) > 0 ? Number(r.bonus) : 0;
+      const incentiveAmount = Number(r.incentive) > 0 ? Number(r.incentive) : 0;
+
+      const pfAmount =
+        Boolean(r.pf_applicable) && Number(r.pf_amount) > 0
+          ? Number(r.pf_amount)
+          : 0;
+
+      const otherDeductionAmount =
+        Number(r.other_deductions) > 0
+          ? Number(r.other_deductions)
+          : 0;
+
+      salaryHistory.push({
+        pay_month: r.pay_month,
+        pay_year: r.pay_year,
+        payment_status: r.payment_status,
+        credited_on: r.credited_on
+          ? new Date(r.credited_on).toISOString().split("T")[0]
+          : null,
+        bank_name: r.bank_name,
+        net_salary: Number(r.net_salary),
+
+        incentives: [
+          ...(bonusAmount > 0 ? [{ type: "BONUS", amount: bonusAmount }] : []),
+          ...(incentiveAmount > 0 ? [{ type: "INCENTIVE", amount: incentiveAmount }] : [])
+        ],
+
+        deductions: [
+          ...(pfAmount > 0 ? [{ type: "PROVIDENT_FUND", amount: pfAmount }] : []),
+          ...(otherDeductionAmount > 0 ? [{ type: "OTHER", amount: otherDeductionAmount }] : [])
+        ],
+
+        total_incentives: bonusAmount + incentiveAmount,
+        total_deductions: pfAmount + otherDeductionAmount,
+
+        view_url: viewUrl,
+        download_url: downloadUrl
       });
-    } else if (r.file_path) {
-      // fallback for local storage
-      payslip_url = r.file_path;
     }
-
-
-    /* ===============================
-       RESPONSE (DUMB & CLEAN)
-    ================================ */
 
     return res.json({
       status: true,
       message: "Salary details fetched successfully",
-      salary: {
-        employee_id: r.employee_id,
-        base_salary: (r.base_salary),
-        gross_salary: (r.gross_salary),
-        net_salary: (r.net_salary),
-
-        total_incentives: totalIncentives,
-        total_deductions: totalDeductions,
-
-        deductions,
-        incentives,
-
-        salary_history: [
-          {
-            pay_month: r.pay_month,
-            pay_year: r.pay_year,
-            payment_status: r.payment_status,
-            credited_on: r.credited_on
-              ? new Date(r.credited_on).toISOString().split("T")[0]
-              : null,
-            bank_name: r.bank_name,
-            net_salary: Number(r.net_salary),
-            payslip_url
-          }
-        ]
-      }
+      salary_history: salaryHistory
     });
 
   } catch (error) {
