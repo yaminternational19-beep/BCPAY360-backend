@@ -1,6 +1,6 @@
 import express from "express";
 import { getEmployeeHome } from "../../controllers/employee/home.controller.js";
-import { verifyToken } from "../../middlewares/auth.middleware.js";
+import { verifyEmployeeToken } from "../../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
@@ -10,7 +10,7 @@ const router = express.Router();
  */
 router.get(
   "/home",
-  verifyToken,          // must set req.user from JWT
+  verifyEmployeeToken,          // must set req.user from JWT
   getEmployeeHome
 );
 

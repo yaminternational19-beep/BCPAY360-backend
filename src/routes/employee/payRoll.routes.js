@@ -3,12 +3,12 @@ import {
   getAllEmployeePayrollData
 } from "../../controllers/employee/payRoll.controller.js";
 
-import { verifyToken, requireRole } from "../../middlewares/auth.middleware.js";
+import { verifyEmployeeToken, requireRole } from "../../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
 // Employee auth
-router.use(verifyToken);
+router.use(verifyEmployeeToken);
 router.use(requireRole("EMPLOYEE"));
 
 router.get("/payroll", getAllEmployeePayrollData);

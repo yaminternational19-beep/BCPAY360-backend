@@ -1,6 +1,6 @@
 import express from "express";
 import { getEmployeeHolidays } from "../../controllers/employee/holiday.controller.js";
-import { verifyToken } from "../../middlewares/auth.middleware.js";
+import { verifyEmployeeToken } from "../../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
@@ -10,7 +10,7 @@ const router = express.Router();
  */
 router.get(
   "/holidays",
-  verifyToken,          // must set req.user from JWT
+  verifyEmployeeToken,          // must set req.user from JWT
   getEmployeeHolidays
 );
 

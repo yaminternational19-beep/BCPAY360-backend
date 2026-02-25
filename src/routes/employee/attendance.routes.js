@@ -1,5 +1,5 @@
 import express from "express";
-import { verifyToken } from "../../middlewares/auth.middleware.js";
+import { verifyEmployeeToken } from "../../middlewares/auth.middleware.js";
 import {
   checkIn,
   checkOut,
@@ -13,7 +13,7 @@ const router = express.Router();
 router.options("*", (_, res) => res.sendStatus(200));
 
 /* PROTECTED */
-router.use(verifyToken);
+router.use(verifyEmployeeToken);
 
 /* ACTIONS */
 router.post("/check-in", checkIn);

@@ -5,12 +5,12 @@ import {
   getLeaveHistory
 } from "../../controllers/employee/leave.controller.js";
 
-import { verifyToken, requireRole } from "../../middlewares/auth.middleware.js";
+import { verifyEmployeeToken, requireRole } from "../../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
 // Employee auth
-router.use(verifyToken);
+router.use(verifyEmployeeToken);
 router.use(requireRole("EMPLOYEE"));
 
 router.get("/leave/types", getAvailableLeaveTypes);

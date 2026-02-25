@@ -1,5 +1,5 @@
 import express from "express";
-import { allowRoles, verifyToken } from "../../middlewares/auth.middleware.js";
+import { allowRoles, verifyEmployeeToken } from "../../middlewares/auth.middleware.js";
 
 import {
    employeeLogin,
@@ -36,7 +36,7 @@ router.post("/resend-login-otp", resendEmployeeLoginOtp);
 -------------------------------- */
 router.post(
    "/change-password",
-   verifyToken,
+   verifyEmployeeToken,
    allowRoles("EMPLOYEE"),
    changeEmployeePassword
 );

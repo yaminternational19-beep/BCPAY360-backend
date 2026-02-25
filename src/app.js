@@ -48,6 +48,8 @@ import suppoptreq from "./routes/employee/support.route.js";
 import editEmployeeProfile from "./routes/employee/employee.routes.js";
 
 import getContent from "./routes/employee/getContent.routes.js";
+import  getFaqs  from "./routes/employee/faq.routes.js";
+import deactivateAccount from "./routes/employee/deactivateAccount.routes.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -212,6 +214,7 @@ app.use("/api/employee", editEmployeeProfile);
 
 
 import uploadCompanyGovernmentForm from "./routes/organization/companyGovernmentForm.routes.js";
+
 app.use("/api/admin/government-forms", uploadCompanyGovernmentForm);
 
 
@@ -222,7 +225,9 @@ app.use("/api/admin", FandQ);
 app.use("/api/admin", broadcastRoutes);
 
 app.use("/api/employee", getContent);
+app.use("/api/employee", getFaqs);
 
+app.use("/api/employee", deactivateAccount);
 
 
 export default app;

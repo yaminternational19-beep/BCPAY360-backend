@@ -1,6 +1,6 @@
 import express from "express";
 import { getEmployeeProfile } from "../../controllers/employee/getProfile.controler.js";
-import { verifyToken } from "../../middlewares/auth.middleware.js";
+import { verifyEmployeeToken } from "../../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
@@ -9,7 +9,7 @@ const router = express.Router();
  */
 router.get(
   "/profile",
-  verifyToken,
+  verifyEmployeeToken,
   getEmployeeProfile
 );
 

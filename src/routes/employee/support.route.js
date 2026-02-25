@@ -5,14 +5,14 @@ import {
   getContactInformation
 } from "../../controllers/employee/support.controller.js";
 
-import { verifyToken } from "../../middlewares/auth.middleware.js";
+import { verifyEmployeeToken } from "../../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
 /**
  * EMPLOYEE – HELP & SUPPORT
  */
-router.use(verifyToken);
+router.use(verifyEmployeeToken);
 
 // Create support request
 router.post("/support", createSupportTicket);
