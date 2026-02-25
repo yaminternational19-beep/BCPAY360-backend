@@ -8,7 +8,7 @@ import {
 
 const MODULE_NAME = "EMPLOYEE_PROFILE_UPDATE_CONTROLLER";
 
-const SIGNED_URL_TTL = 300;
+const SIGNED_URL_TTL = 259200; // 3 days
 const INLINE = { disposition: "inline" };
 
 /* ---------------------------------
@@ -48,7 +48,7 @@ export const updateEmployeeProfile = async (req, res) => {
 
   try {
     const employeeId = req.user.id;
-    const { full_name, email, phone, address, permanent_address } = req.body;
+    const { full_name, email, country_code, phone, address, permanent_address } = req.body;
 
     let profilePhotoPath = null;
 
@@ -121,38 +121,78 @@ export const updateEmployeeProfile = async (req, res) => {
        UPDATE CORE TABLE
     --------------------------------- */
 
-    await connection.query(
-      `UPDATE employees
-       SET full_name = ?, email = ?, phone = ?
-       WHERE id = ?`,
-      [full_name, email, phone, employeeId]
-    );
+    const employeeUpdateFields = [];
+const employeeUpdateValues = [];
+
+if (full_name !== undefined) {
+  employeeUpdateFields.push("full_name = ?");
+  employeeUpdateValues.push(full_name);
+}
+
+if (email !== undefined) {
+  employeeUpdateFields.push("email = ?");
+  employeeUpdateValues.push(email);
+}
+if (country_code !== undefined) {
+  employeeUpdateFields.push("country_code = ?");
+  employeeUpdateValues.push(country_code);
+}
+
+if (phone !== undefined) {
+  const numericPhone = phone.replace(/\D/g, "");
+
+  if (numericPhone.length < 8 || numericPhone.length > 15) {
+    throw new Error("Invalid phone number");
+  }
+
+  employeeUpdateFields.push("phone = ?");
+  employeeUpdateValues.push(numericPhone);
+}
+
+if (employeeUpdateFields.length > 0) {
+  await connection.query(
+    `UPDATE employees
+     SET ${employeeUpdateFields.join(", ")}
+     WHERE id = ?`,
+    [...employeeUpdateValues, employeeId]
+  );
+}
 
     const [[profileRow]] = await connection.query(
       `SELECT id FROM employee_profiles WHERE employee_id = ?`,
       [employeeId]
     );
 
-    if (profileRow) {
-      await connection.query(
-        `UPDATE employee_profiles
-         SET address = ?,
-             permanent_address = ?,
-             profile_photo_path = COALESCE(?, profile_photo_path),
-             last_updated_by_role = 'EMPLOYEE',
-             last_updated_by_id = ?
-         WHERE employee_id = ?`,
-        [address, permanent_address, profilePhotoPath, employeeId, employeeId]
-      );
-    } else {
-      await connection.query(
-        `INSERT INTO employee_profiles
-         (employee_id, address, permanent_address,
-          profile_photo_path, last_updated_by_role, last_updated_by_id)
-         VALUES (?, ?, ?, ?, 'EMPLOYEE', ?)`,
-        [employeeId, address, permanent_address, profilePhotoPath, employeeId]
-      );
-    }
+    const profileUpdateFields = [];
+const profileUpdateValues = [];
+
+if (address !== undefined) {
+  profileUpdateFields.push("address = ?");
+  profileUpdateValues.push(address);
+}
+
+if (permanent_address !== undefined) {
+  profileUpdateFields.push("permanent_address = ?");
+  profileUpdateValues.push(permanent_address);
+}
+
+if (profilePhotoPath !== null) {
+  profileUpdateFields.push("profile_photo_path = ?");
+  profileUpdateValues.push(profilePhotoPath);
+}
+
+profileUpdateFields.push("last_updated_by_role = 'EMPLOYEE'");
+profileUpdateFields.push("last_updated_by_id = ?");
+profileUpdateValues.push(employeeId);
+
+if (profileRow && profileUpdateFields.length > 0) {
+  await connection.query(
+    `UPDATE employee_profiles
+     SET ${profileUpdateFields.join(", ")}
+     WHERE employee_id = ?`,
+    [...profileUpdateValues, employeeId]
+  );
+}
 
     await connection.commit();
 
@@ -228,8 +268,8 @@ export const updateEmployeeProfile = async (req, res) => {
             : null,
           download_url: key
             ? await getS3SignedUrl(key, SIGNED_URL_TTL, {
-                disposition: `attachment; filename="${doc.document_type}.pdf"`
-              })
+              disposition: `attachment; filename="${doc.document_type}.pdf"`
+            })
             : null
         };
       })
@@ -268,8 +308,8 @@ export const updateEmployeeProfile = async (req, res) => {
             : null,
           download_url: key
             ? await getS3SignedUrl(key, SIGNED_URL_TTL, {
-                disposition: `attachment; filename="${doc.form_code}_${periodLabel}.pdf"`
-              })
+              disposition: `attachment; filename="${doc.form_code}_${periodLabel}.pdf"`
+            })
             : null
         };
       })

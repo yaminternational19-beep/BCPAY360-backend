@@ -8,7 +8,7 @@ import dotenv from "dotenv";
 import logger from "../utils/logger.js";
 
 const MODULE_NAME = "EMPLOYEE_SERVICE";
-const SIGNED_URL_TTL = 3600;
+const SIGNED_URL_TTL = 259200; // 3 days
 const INLINE = { disposition: "inline" };
 
 dotenv.config();
@@ -395,7 +395,7 @@ export const listEmployeesService = async (company_id, query = {}) => {
   ============================== */
   for (const row of rows) {
     row.profile_photo_url = row.profile_photo_path
-      ? await getS3SignedUrl(row.profile_photo_path, 3600, {
+      ? await getS3SignedUrl(row.profile_photo_path, SIGNED_URL_TTL, {
         disposition: "inline",
       })
       : null;

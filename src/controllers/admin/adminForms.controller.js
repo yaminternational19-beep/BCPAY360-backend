@@ -134,13 +134,13 @@ export const getEmployeesByForm = async (req, res) => {
 
         const viewUrl = await getS3SignedUrl(
           row.storage_object_key,
-          3600,
+          259200,
           { disposition: "inline" }
         );
 
         const downloadUrl = await getS3SignedUrl(
           row.storage_object_key,
-          3600,
+          259200,
           { disposition: "attachment" }
         );
 

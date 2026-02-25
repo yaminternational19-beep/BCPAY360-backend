@@ -47,6 +47,8 @@ import suppoptreq from "./routes/employee/support.route.js";
 
 import editEmployeeProfile from "./routes/employee/employee.routes.js";
 
+import getContent from "./routes/employee/getContent.routes.js";
+
 const app = express();
 app.set("trust proxy", 1);
 
@@ -218,6 +220,8 @@ app.use("/api/admin/content", contentPage);
 app.use("/api/admin", helpsupport)
 app.use("/api/admin", FandQ);
 app.use("/api/admin", broadcastRoutes);
+
+app.use("/api/employee", getContent);
 
 
 

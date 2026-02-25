@@ -7,7 +7,7 @@ const MODULE_NAME = "EMPLOYEE_PROFILE_FETCH_CONTROLLER";
 /* ---------------------------------
    CONSTANTS
 --------------------------------- */
-const SIGNED_URL_TTL = 300; // 5 minutes
+const SIGNED_URL_TTL = 259200; // 3 days
 const INLINE = { disposition: "inline" };
 
 /* ---------------------------------

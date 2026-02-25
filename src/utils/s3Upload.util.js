@@ -122,7 +122,7 @@ export const deleteS3Object = async (key) => {
 /**
  * Presigned URL generation with metadata awareness
  */
-export const getS3SignedUrl = async (key, expiresIn = 3600, options = {}) => {
+export const getS3SignedUrl = async (key, expiresIn = 259200, options = {}) => {
     if (!key) return null;
     try {
         const getParams = {

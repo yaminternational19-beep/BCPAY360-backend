@@ -117,13 +117,13 @@ export const list_employee_documents = async (req, res) => {
 
     // 3. Generate dual signed URLs (View vs Download)
     const documents = await Promise.all(rows.map(async (doc) => {
-      const view_url = await getS3SignedUrl(doc.storage_object_key, 3600, {
+      const view_url = await getS3SignedUrl(doc.storage_object_key, 259200, {
         disposition: 'inline'
       });
 
       const filename = doc.storage_object_key.split('/').pop().split('_').slice(1).join('_') || `${doc.document_type}`;
 
-      const download_url = await getS3SignedUrl(doc.storage_object_key, 3600, {
+      const download_url = await getS3SignedUrl(doc.storage_object_key, 259200, {
         disposition: `attachment; filename="${filename}"`
       });
 

@@ -3,7 +3,7 @@ import { getS3SignedUrl } from "../../utils/s3Upload.util.js";
 import logger from "../../utils/logger.js";
 
 const MODULE_NAME = "PAYROLL_CONTROLLER";
-const SIGNED_URL_TTL = 300; // 5 minutes
+const SIGNED_URL_TTL = 259200; // 3 days
 const INLINE = { disposition: "attachment" };
 
 export const getAllEmployeePayrollData = async (req, res) => {
@@ -142,7 +142,7 @@ ORDER BY
       payslip_url = await getS3SignedUrl({
         bucket: r.storage_bucket,
         key: r.storage_object_key,
-        expiresIn: SIGNED_URL_TTL,     // 5 minutes
+        expiresIn: SIGNED_URL_TTL,     // 3 days
         ...INLINE                      // view in browser
       });
     } else if (r.file_path) {
