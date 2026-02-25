@@ -65,7 +65,7 @@ export const getContent = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: ["Data Found Successfully"],
+      message: "Data Found Successfully",
       content_arr
     });
 
