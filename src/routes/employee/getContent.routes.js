@@ -7,4 +7,5 @@ const router = express.Router();
 // If public content, remove authMiddleware
 router.get("/get-content", verifyEmployeeToken, getContent);
 
+
 export default router;

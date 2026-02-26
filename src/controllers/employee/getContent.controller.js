@@ -37,7 +37,8 @@ export const getContent = async (req, res) => {
   const connection = await db.getConnection();
 
   try {
-    const companyId = req.user.company_id;
+    const companyId = req.user?.company_id; // optional if protected
+    const { slug } = req.query;
 
     if (!companyId) {
       return res.status(400).json({
@@ -46,8 +47,39 @@ export const getContent = async (req, res) => {
       });
     }
 
+    /* ---------------------------------
+       IF SLUG EXISTS → RETURN SINGLE PAGE
+    --------------------------------- */
+    if (slug) {
+      const [rows] = await connection.query(
+        `SELECT id, slug, content, content_type
+         FROM company_pages
+         WHERE company_id = ?
+           AND slug = ?
+           AND is_active = 1
+         LIMIT 1`,
+        [companyId, slug]
+      );
+
+      if (rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: ["Page not found"]
+        });
+      }
+
+      const row = rows[0];
+
+      return res.status(200).send(
+        processContent(row.content, row.content_type)
+      );
+    }
+
+    /* ---------------------------------
+       IF NO SLUG → RETURN ALL PAGES
+    --------------------------------- */
     const [rows] = await connection.query(
-      `SELECT id, slug, content, content_type, is_active
+      `SELECT id, slug, content, content_type
        FROM company_pages
        WHERE company_id = ?
          AND is_active = 1
@@ -59,7 +91,7 @@ export const getContent = async (req, res) => {
       content_id: row.id,
       content_type: row.content_type === "JSON" ? 2 : 1,
       content: processContent(row.content, row.content_type),
-      content_url: `${req.protocol}://${req.get("host")}/api/company/pages?slug=${row.slug}`,
+      content_url: `${req.protocol}://${req.get("host")}/api/employee/get-content?slug=${row.slug}`,
       status: false
     }));
 
@@ -80,3 +112,5 @@ export const getContent = async (req, res) => {
     connection.release();
   }
 };
+
+
