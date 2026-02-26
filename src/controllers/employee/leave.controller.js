@@ -1,5 +1,6 @@
 import db from "../../models/db.js";
 import logger from "../../utils/logger.js";
+import { sendNotification } from "../../services/notification.service.js";
 
 const MODULE_NAME = "LEAVE_CONTROLLER";
 
@@ -193,30 +194,69 @@ export const applyLeave = async (req, res) => {
     // ===============================
     // 6️⃣ Insert leave request
     // ===============================
-    await db.query(
-      `
-      INSERT INTO employee_leave_requests (
-        company_id,
-        branch_id,
-        employee_id,
-        leave_master_id,
-        from_date,
-        to_date,
-        total_days,
-        reason
-      ) VALUES (?,?,?,?,?,?,?,?)
-      `,
-      [
-        company_id,
-        branch_id,
-        employee_id,
-        leave_master_id,
-        fromDate,
-        toDate,
-        usedDays,
-        reason || null
-      ]
-    );
+    // await db.query(
+    //   `
+    //   INSERT INTO employee_leave_requests (
+    //     company_id,
+    //     branch_id,
+    //     employee_id,
+    //     leave_master_id,
+    //     from_date,
+    //     to_date,
+    //     total_days,
+    //     reason
+    //   ) VALUES (?,?,?,?,?,?,?,?)
+    //   `,
+    //   [
+    //     company_id,
+    //     branch_id,
+    //     employee_id,
+    //     leave_master_id,
+    //     fromDate,
+    //     toDate,
+    //     usedDays,
+    //     reason || null
+    //   ]
+    // );
+
+
+    const [leaveResult] = await db.query(
+  `
+  INSERT INTO employee_leave_requests (
+    company_id,
+    branch_id,
+    employee_id,
+    leave_master_id,
+    from_date,
+    to_date,
+    total_days,
+    reason
+  ) VALUES (?,?,?,?,?,?,?,?)
+  `,
+  [
+    company_id,
+    branch_id,
+    employee_id,
+    leave_master_id,
+    fromDate,
+    toDate,
+    usedDays,
+    reason || null
+  ]
+);
+const leaveRequestId = leaveResult.insertId;
+
+await sendNotification({
+  company_id,
+  branch_id,
+  user_type: "EMPLOYEE",
+  user_id: employee_id,
+  title: "Leave Request Submitted",
+  message: "Your leave request has been submitted successfully.",
+  notification_type: "LEAVE",
+  reference_id: leaveRequestId,
+  reference_type: "LEAVE_REQUEST"
+});
 
     return res.json({
       success: true,

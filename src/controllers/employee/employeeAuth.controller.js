@@ -113,12 +113,31 @@ export const employeeLogin = async (req, res) => {
     /* ---------------------------------
    5️⃣ INSERT DEVICE (NO UPSERT)
 --------------------------------- */
-    await db.query(
-      `INSERT INTO employee_devices
-      (employee_id, player_id, device_type, last_login_at)
-      VALUES (?, ?, ?, NOW())`,
-      [employee.id, safePlayerId, device_type]
-    );
+    // await db.query(
+    //   `INSERT INTO employee_devices
+    //   (employee_id, player_id, device_type, last_login_at)
+    //   VALUES (?, ?, ?, NOW())`,
+    //   [employee.id, safePlayerId, device_type]
+    // );
+
+    /* ---------------------------------
+   5️⃣ UPSERT DEVICE (PRODUCTION SAFE)
+--------------------------------- */
+if (safePlayerId) {
+  await db.query(
+    `
+    INSERT INTO employee_devices
+      (employee_id, player_id, device_type, is_active, last_login_at)
+    VALUES (?, ?, ?, 1, NOW())
+    ON DUPLICATE KEY UPDATE
+      employee_id = VALUES(employee_id),
+      device_type = VALUES(device_type),
+      is_active = 1,
+      last_login_at = NOW()
+    `,
+    [employee.id, safePlayerId, device_type]
+  );
+}
 
 
 

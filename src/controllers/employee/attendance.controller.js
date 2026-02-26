@@ -508,8 +508,98 @@ export const getMyAttendance = async (req, res) => {
     /* -------------------------------
        2️⃣ ATTENDANCE LIST (DATE SAFE)
     -------------------------------- */
-    const [records] = await db.query(
-      `
+  //   const [records] = await db.query(
+  //     `
+  // SELECT
+  //   DATE_FORMAT(attendance_date, '%Y-%m-%d') AS attendance_date,
+  //   check_in_time,
+  //   check_out_time,
+  //   worked_minutes,
+  //   overtime_minutes,
+  //   status
+  // FROM attendance
+  // WHERE employee_id = ?
+  //   AND attendance_date >= ?
+  //   AND attendance_date BETWEEN ? AND ?
+  // ORDER BY attendance_date DESC
+  // `,
+  //     [employeeId, emp.joining_date, from, to]
+  //   );
+
+
+    /* -------------------------------
+       3️⃣ SUMMARY
+    -------------------------------- */
+  //   const [[summary]] = await db.query(
+  //     `
+  // SELECT
+  //   SUM(
+  //     CASE
+  //       WHEN status IN ('CHECKED_OUT','LATE') THEN 1
+  //       WHEN status = 'HALF_DAY' THEN 0.5
+  //       ELSE 0
+  //     END
+  //   ) AS present_days,
+
+  //   SUM(status = 'LATE')     AS late_days,
+  //   SUM(status = 'HALF_DAY') AS half_days,
+  //   SUM(status = 'ABSENT')   AS absent_days,
+
+  //   SUM(worked_minutes)   AS total_worked_minutes,
+  //   SUM(overtime_minutes) AS total_overtime_minutes
+  // FROM attendance
+  // WHERE employee_id = ?
+  //   AND attendance_date >= ?
+  //   AND attendance_date BETWEEN ? AND ?
+  // `,
+  //     [employeeId, emp.joining_date, from, to]
+  //   );
+
+
+
+
+
+  // 1️⃣ Fix date range boundaries
+const fromDate = new Date(from);
+const joiningDate = new Date(emp.joining_date);
+const todayDate = new Date(today);
+const toDate = new Date(to);
+
+// Start = later of joining or requested from
+const rangeStartDate = fromDate > joiningDate ? fromDate : joiningDate;
+
+// End = earlier of today or requested to
+const rangeEndDate = toDate < todayDate ? toDate : todayDate;
+
+// If joining date is after today → no records
+if (rangeStartDate > rangeEndDate) {
+  return res.status(200).json({
+    success: true,
+    data: {
+      today: [todayData],
+      list: [
+        {
+          range: { from, to },
+          total_days: 0,
+          records: []
+        }
+      ],
+      total_days_summary: {
+        total_days: 0,
+        present_days: 0,
+        late_days: 0,
+        half_days: 0,
+        absent_days: 0,
+        total_worked_minutes: 0,
+        total_overtime_minutes: 0
+      }
+    }
+  });
+}
+
+// 2️⃣ Fetch DB records only within valid range
+const [recordsFromDB] = await db.query(
+  `
   SELECT
     DATE_FORMAT(attendance_date, '%Y-%m-%d') AS attendance_date,
     check_in_time,
@@ -519,43 +609,65 @@ export const getMyAttendance = async (req, res) => {
     status
   FROM attendance
   WHERE employee_id = ?
-    AND attendance_date >= ?
     AND attendance_date BETWEEN ? AND ?
-  ORDER BY attendance_date DESC
+  ORDER BY attendance_date ASC
   `,
-      [employeeId, emp.joining_date, from, to]
-    );
+  [employeeId, rangeStartDate, rangeEndDate]
+);
 
+// 3️⃣ Convert DB records to map
+const recordMap = {};
+recordsFromDB.forEach(r => {
+  recordMap[r.attendance_date] = r;
+});
 
-    /* -------------------------------
-       3️⃣ SUMMARY
-    -------------------------------- */
-    const [[summary]] = await db.query(
-      `
-  SELECT
-    SUM(
-      CASE
-        WHEN status IN ('CHECKED_OUT','LATE') THEN 1
-        WHEN status = 'HALF_DAY' THEN 0.5
-        ELSE 0
-      END
-    ) AS present_days,
+// 4️⃣ Generate attendance from joining → today only
+const records = [];
+let current = new Date(rangeStartDate);
 
-    SUM(status = 'LATE')     AS late_days,
-    SUM(status = 'HALF_DAY') AS half_days,
-    SUM(status = 'ABSENT')   AS absent_days,
+while (current <= rangeEndDate) {
+ const year = current.getFullYear();
+const month = String(current.getMonth() + 1).padStart(2, "0");
+const day = String(current.getDate()).padStart(2, "0");
+const dateStr = `${year}-${month}-${day}`;
 
-    SUM(worked_minutes)   AS total_worked_minutes,
-    SUM(overtime_minutes) AS total_overtime_minutes
-  FROM attendance
-  WHERE employee_id = ?
-    AND attendance_date >= ?
-    AND attendance_date BETWEEN ? AND ?
-  `,
-      [employeeId, emp.joining_date, from, to]
-    );
+  records.push(
+    recordMap[dateStr] || {
+      attendance_date: dateStr,
+      check_in_time: null,
+      check_out_time: null,
+      worked_minutes: 0,
+      overtime_minutes: 0,
+      status: "ABSENT"
+    }
+  );
 
+  current.setDate(current.getDate() + 1);
+}
 
+let present_days = 0;
+let late_days = 0;
+let half_days = 0;
+let absent_days = 0;
+let total_worked_minutes = 0;
+let total_overtime_minutes = 0;
+
+records.forEach(r => {
+  if (r.status === "LATE") {
+    present_days += 1;
+    late_days += 1;
+  } else if (r.status === "CHECKED_OUT") {
+    present_days += 1;
+  } else if (r.status === "HALF_DAY") {
+    present_days += 0.5;
+    half_days += 1;
+  } else if (r.status === "ABSENT") {
+    absent_days += 1;
+  }
+
+  total_worked_minutes += r.worked_minutes || 0;
+  total_overtime_minutes += r.overtime_minutes || 0;
+});
     /* -------------------------------
        FINAL RESPONSE
     -------------------------------- */
@@ -573,14 +685,24 @@ export const getMyAttendance = async (req, res) => {
             records
           }
         ],
+        // total_days_summary: {
+        //   total_days: records.length,
+        //   present_days: Number(summary.present_days) || 0,
+        //   late_days: Number(summary.late_days) || 0,
+        //   half_days: Number(summary.half_days) || 0,
+        //   absent_days: Number(summary.absent_days) || 0,
+        //   total_worked_minutes: Number(summary.total_worked_minutes) || 0,
+        //   total_overtime_minutes: Number(summary.total_overtime_minutes) || 0
+        // }
+
         total_days_summary: {
           total_days: records.length,
-          present_days: Number(summary.present_days) || 0,
-          late_days: Number(summary.late_days) || 0,
-          half_days: Number(summary.half_days) || 0,
-          absent_days: Number(summary.absent_days) || 0,
-          total_worked_minutes: Number(summary.total_worked_minutes) || 0,
-          total_overtime_minutes: Number(summary.total_overtime_minutes) || 0
+          present_days: Number(present_days) || 0,
+          late_days: Number(late_days) || 0,
+          half_days: Number(half_days) || 0,
+          absent_days: Number(absent_days) || 0,
+          total_worked_minutes: Number(total_worked_minutes) || 0,
+          total_overtime_minutes: Number(total_overtime_minutes) || 0
         }
       }
     });

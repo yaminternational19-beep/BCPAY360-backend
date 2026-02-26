@@ -50,6 +50,7 @@ import editEmployeeProfile from "./routes/employee/employee.routes.js";
 import getContent from "./routes/employee/getContent.routes.js";
 import  getFaqs  from "./routes/employee/faq.routes.js";
 import deactivateAccount from "./routes/employee/deactivateAccount.routes.js";
+import notificationRoutes from "./routes/employee/notification.routes.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -228,6 +229,7 @@ app.use("/api/employee", getContent);
 app.use("/api/employee", getFaqs);
 
 app.use("/api/employee", deactivateAccount);
+app.use("/api/employee/notifications", notificationRoutes);
 
 
 export default app;
