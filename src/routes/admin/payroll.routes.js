@@ -5,16 +5,15 @@ import { verifyToken, requireRole } from "../../middlewares/auth.middleware.js";
 const router = express.Router();
 
 
-router.use(requireRole("COMPANY_ADMIN", "HR"));
+router.get("/employees", verifyToken, requireRole("COMPANY_ADMIN", "HR"), PayrollController.getPayrollEmployees);
+router.post("/generate", verifyToken, requireRole("COMPANY_ADMIN", "HR"), PayrollController.generatePayroll);
 
-router.get("/employees", verifyToken, PayrollController.getPayrollEmployees);
-router.post("/generate", verifyToken, PayrollController.generatePayroll);
-
-router.get("/batch", verifyToken, PayrollController.getPayrollSlipPreview);
+router.get("/batch", verifyToken, requireRole("COMPANY_ADMIN", "HR"), PayrollController.getPayrollSlipPreview);
 
 router.post(
   "/confirm",
   verifyToken,
+  requireRole("COMPANY_ADMIN", "HR"),
   PayrollController.confirmPayrollBatch
 );
 

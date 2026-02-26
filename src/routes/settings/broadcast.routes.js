@@ -12,12 +12,12 @@ const router = express.Router();
 
 // 🔐 Auth & role protection (same as company-faq)
 
-router.use(requireRole("COMPANY_ADMIN", "HR"));
+// Removed router.use(requireRole(...)) to prevent blocking shared paths.
 
 // 📢 Broadcast APIs
-router.post("/broadcast", verifyToken, createBroadcast);                 // create broadcast
-router.get("/broadcast", verifyToken, getBroadcasts);                    // admin history
-router.get("/broadcast/employees", verifyToken, getBroadcastEmployees); // resolve employee names
-router.delete("/broadcast/:id", verifyToken, deleteBroadcast);           // delete broadcast
+router.post("/broadcast", verifyToken, requireRole("COMPANY_ADMIN", "HR"), createBroadcast);
+router.get("/broadcast", verifyToken, requireRole("COMPANY_ADMIN", "HR"), getBroadcasts);
+router.get("/broadcast/employees", verifyToken, requireRole("COMPANY_ADMIN", "HR"), getBroadcastEmployees);
+router.delete("/broadcast/:id", verifyToken, requireRole("COMPANY_ADMIN", "HR"), deleteBroadcast);
 
 export default router;

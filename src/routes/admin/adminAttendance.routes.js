@@ -8,8 +8,7 @@ const router = express.Router();
 router.options("*", (_, res) => res.sendStatus(200));
 
 /* 🔐 ADMIN ONLY */
-
-router.use(allowRoles("COMPANY_ADMIN", "SUPER_ADMIN"));
+// Removed router.use(allowRoles(...)) to prevent blocking shared paths.
 
 /**
  * GET /api/admin/attendance
@@ -21,6 +20,6 @@ router.use(allowRoles("COMPANY_ADMIN", "SUPER_ADMIN"));
  * HISTORY:
  *   ?viewType=HISTORY&employeeId=ID&from=YYYY-MM-DD&to=YYYY-MM-DD
  */
-router.get("/", verifyToken, getAdminAttendance);
+router.get("/", verifyToken, allowRoles("COMPANY_ADMIN", "SUPER_ADMIN"), getAdminAttendance);
 
 export default router;

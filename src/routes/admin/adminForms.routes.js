@@ -19,18 +19,20 @@ router.options("*", (_, res) => res.sendStatus(200));
 
 /* 🔐 AUTH */
 
-router.use(allowRoles("COMPANY_ADMIN", "SUPER_ADMIN", "HR"));
+// Remove router.use(allowRoles(...)) because it blocks other routers on /api/admin
 
 /* =====================
    LIST EMPLOYEES BY FORM
 ===================== */
-router.get("/",verifyToken, getEmployeesByForm);
+router.get("/", verifyToken, allowRoles("COMPANY_ADMIN", "SUPER_ADMIN", "HR"), getEmployeesByForm);
 
 /* =====================
    UPLOAD (NEW)
 ===================== */
 router.post(
-  "/upload",verifyToken,
+  "/upload",
+  verifyToken,
+  allowRoles("COMPANY_ADMIN", "SUPER_ADMIN", "HR"),
   uploadDocument,
   handleMulterError,
   uploadEmployeeForm
@@ -40,7 +42,9 @@ router.post(
    REPLACE (EXISTING)
 ===================== */
 router.put(
-  "/replace",verifyToken,
+  "/replace",
+  verifyToken,
+  allowRoles("COMPANY_ADMIN", "SUPER_ADMIN", "HR"),
   uploadDocument,        // ✅ REQUIRED
   handleMulterError,     // ✅ REQUIRED
   replaceEmployeeForm
@@ -50,7 +54,9 @@ router.put(
    DELETE
 ===================== */
 router.delete(
-  "/delete",verifyToken,
+  "/delete",
+  verifyToken,
+  allowRoles("COMPANY_ADMIN", "SUPER_ADMIN", "HR"),
   deleteEmployeeForm
 );
 

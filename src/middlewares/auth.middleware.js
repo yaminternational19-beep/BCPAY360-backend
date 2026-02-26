@@ -59,6 +59,7 @@ export const verifyEmployeeToken = async (req, res, next) => {
 export const requireRole = (...roles) => {
   return (req, res, next) => {
     if (!req.user) {
+      console.error("REQUIRE_ROLE ERROR: No user found on request. ensure verifyToken is called before requireRole.");
       return res.status(401).json({ message: "Not authenticated" });
     }
 
@@ -76,6 +77,7 @@ export const requireRole = (...roles) => {
 export const allowRoles = (...allowedRoles) => {
   return (req, res, next) => {
     if (!req.user || !req.user.role) {
+      console.error("ALLOW_ROLES ERROR: No user or role found on request. ensure verifyToken is called before allowRoles.");
       return res.status(401).json({ message: "Not authenticated" });
     }
 

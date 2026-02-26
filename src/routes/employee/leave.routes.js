@@ -11,9 +11,7 @@ const router = express.Router();
 
 // Employee auth
 
-router.use(requireRole("EMPLOYEE"));
-
-router.get("/leave/types",verifyEmployeeToken, getAvailableLeaveTypes);
+router.get("/leave/types", verifyEmployeeToken, getAvailableLeaveTypes);
 router.post("/leave/apply", verifyEmployeeToken, applyLeave);
 router.get("/leave/history", verifyEmployeeToken, getLeaveHistory);
 
