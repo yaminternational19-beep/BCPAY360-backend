@@ -8,7 +8,7 @@ const router = express.Router();
 router.options("*", (_, res) => res.sendStatus(200));
 
 /* 🔐 ADMIN ONLY */
-router.use(verifyToken);
+
 router.use(allowRoles("COMPANY_ADMIN", "SUPER_ADMIN"));
 
 /**
@@ -21,6 +21,6 @@ router.use(allowRoles("COMPANY_ADMIN", "SUPER_ADMIN"));
  * HISTORY:
  *   ?viewType=HISTORY&employeeId=ID&from=YYYY-MM-DD&to=YYYY-MM-DD
  */
-router.get("/", getAdminAttendance);
+router.get("/", verifyToken, getAdminAttendance);
 
 export default router;

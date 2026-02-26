@@ -10,7 +10,7 @@ const router = express.Router();
 /**
  * All routes here require authentication
  */
-router.use(verifyToken);
+
 
 /**
  * ------------------------------------
@@ -19,7 +19,7 @@ router.use(verifyToken);
  * ------------------------------------
  */
 router.get(
-  "/company/:formCode",
+  "/company/:formCode",verifyToken,
   requireRole("COMPANY_ADMIN", "HR"),
   getCompanyGovernmentForm
 );
@@ -31,7 +31,7 @@ router.get(
  * ------------------------------------
  */
 router.get(
-  "/employees/:employeeId/summary",
+  "/employees/:employeeId/summary",verifyToken,
   requireRole("COMPANY_ADMIN", "HR"),
   getEmployeeSummary
 );

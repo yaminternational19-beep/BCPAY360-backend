@@ -10,12 +10,12 @@ import { verifyToken, requireRole } from "../../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
-router.use(verifyToken);
+
 router.use(requireRole("COMPANY_ADMIN", "HR"));
 
-router.get("/pending", getPendingLeaves);
-router.post("/:id/approve", approveLeave);
-router.post("/:id/reject", rejectLeave);
+router.get("/pending", verifyToken, getPendingLeaves);
+router.post("/:id/approve", verifyToken, approveLeave);
+router.post("/:id/reject", verifyToken, rejectLeave);
 router.get(
   "/leave-history",
   verifyToken,

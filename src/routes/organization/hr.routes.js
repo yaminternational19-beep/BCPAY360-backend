@@ -19,16 +19,16 @@ router.post("/pre-login", hrPreLogin);
 router.post("/verify-otp", hrVerifyOtp);
 
 /* ===== ADMIN ONLY ===== */
-router.use(verifyToken);
+
 router.use(allowRoles("COMPANY_ADMIN"));
 
-router.post("/", createHR);
-router.get("/", listHRs);
-router.get("/:id", getHRById);
-router.put("/:id", updateHR);
-router.patch("/:id/status", toggleHRStatus);
+router.post("/", verifyToken, createHR);
+router.get("/", verifyToken, listHRs);
+router.get("/:id", verifyToken, getHRById);
+router.put("/:id", verifyToken, updateHR);
+router.patch("/:id/status", verifyToken, toggleHRStatus);
 
 /* ⚠️ OPTIONAL (will soft-delete later) */
-router.delete("/:id", deleteHR);
+router.delete("/:id", verifyToken, deleteHR);
 
 export default router;

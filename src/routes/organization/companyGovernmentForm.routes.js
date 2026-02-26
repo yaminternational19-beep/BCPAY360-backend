@@ -11,7 +11,7 @@ import { allowRoles, verifyToken } from "../../middlewares/auth.middleware.js";
 const router = express.Router();
 
 /* PROTECTED - Only COMPANY_ADMIN and HR can manage government forms */
-router.use(verifyToken);
+
 router.use(allowRoles("COMPANY_ADMIN", "HR"));
 
 /**
@@ -19,32 +19,32 @@ router.use(allowRoles("COMPANY_ADMIN", "HR"));
  * POST /api/admin/government-forms
  * Body: { form_code, form_name, period_type, category, is_employee_specific, description }
  */
-router.post("/", createGovernmentForm);
+router.post("/", verifyToken, createGovernmentForm);
 
 /**
  * GET ALL - List available forms
  * GET /api/admin/government-forms?groupByCategory=true
  */
-router.get("/", getGovernmentForms);
+router.get("/", verifyToken, getGovernmentForms);
 
 /**
  * GET BY CODE - Get form definition by form_code
  * GET /api/admin/government-forms/:formCode
  */
-router.get("/:formCode", getFormDefinition);
+router.get("/:formCode", verifyToken, getFormDefinition);
 
 /**
  * UPDATE - Update form metadata or toggle status
  * PATCH /api/admin/government-forms/:id
  * Body: { action: "TOGGLE_STATUS" } OR { form_name, description, period_type, category }
  */
-router.patch("/:id", updateGovernmentForm);
+router.patch("/:id", verifyToken, updateGovernmentForm);
 
 /**
  * DELETE - Remove government form
  * DELETE /api/admin/government-forms/:id
  */
-router.delete("/:id", deleteGovernmentForm);
+router.delete("/:id", verifyToken, deleteGovernmentForm);
 
 export default router;
 

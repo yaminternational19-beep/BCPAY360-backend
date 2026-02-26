@@ -12,13 +12,13 @@ import { allowRoles, verifyToken } from "../../middlewares/auth.middleware.js";
 const router = express.Router();
 
 /* PROTECTED */
-router.use(verifyToken);
+
 router.use(allowRoles("COMPANY_ADMIN"));
 
-router.post("/", createDesignation);
-router.get("/", listDesignations);
-router.put("/:id", updateDesignation);
-router.patch("/:id/status", toggleDesignationStatus);
-router.delete("/:id", deleteDesignation);
+router.post("/", verifyToken, createDesignation);
+router.get("/", verifyToken, listDesignations);
+router.put("/:id", verifyToken, updateDesignation);
+router.patch("/:id/status", verifyToken, toggleDesignationStatus);
+router.delete("/:id", verifyToken, deleteDesignation);
 
 export default router;

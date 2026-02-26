@@ -11,13 +11,13 @@ import { verifyToken, requireRole } from "../../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
-router.use(verifyToken);
+
 router.use(requireRole("COMPANY_ADMIN", "HR"));
 
-router.get("/pages", getAllPages);
-router.get("/pages/:slug", getPageBySlug);
-router.post("/pages", createPage);
-router.put("/pages/:id", updatePage);
-router.delete("/pages/:id", deletePage)
+router.get("/pages", verifyToken, getAllPages);
+router.get("/pages/:slug", verifyToken, getPageBySlug);
+router.post("/pages", verifyToken, createPage);
+router.put("/pages/:id", verifyToken, updatePage);
+router.delete("/pages/:id", verifyToken, deletePage)
 
 export default router;

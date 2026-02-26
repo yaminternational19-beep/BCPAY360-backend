@@ -10,12 +10,11 @@ import { verifyToken, requireRole } from "../../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
-router.use(verifyToken);
 router.use(requireRole("COMPANY_ADMIN", "HR"));
 
-router.post("/company-faq", createCompanyFaq);
-router.get("/company-faq", getCompanyFaqs);
-router.put("/company-faq/:id", updateCompanyFaq);
-router.delete("/company-faq/:id", deleteCompanyFaq);
+router.post("/company-faq", verifyToken, createCompanyFaq);
+router.get("/company-faq", verifyToken, getCompanyFaqs);
+router.put("/company-faq/:id", verifyToken, updateCompanyFaq);
+router.delete("/company-faq/:id", verifyToken, deleteCompanyFaq);
 
 export default router;

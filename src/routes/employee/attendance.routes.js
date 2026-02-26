@@ -13,19 +13,19 @@ const router = express.Router();
 router.options("*", (_, res) => res.sendStatus(200));
 
 /* PROTECTED */
-router.use(verifyEmployeeToken);
+
 
 /* ACTIONS */
-router.post("/check-in", checkIn);
-router.post("/check-out", checkOut);
+router.post("/check-in", verifyEmployeeToken, checkIn);
+router.post("/check-out", verifyEmployeeToken, checkOut);
 
 /* VIEWS */
 
-router.get("/my", getMyAttendance);
+router.get("/my", verifyEmployeeToken, getMyAttendance);
 
 /* ✅ SUMMARY */
 
 
-router.post("/raise-request", raiseAttendanceRequest);
+router.post("/raise-request", verifyEmployeeToken, raiseAttendanceRequest);
 
 export default router;

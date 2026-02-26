@@ -642,8 +642,10 @@ const dateStr = `${year}-${month}-${day}`;
     }
   );
 
+
   current.setDate(current.getDate() + 1);
 }
+records.reverse();
 
 let present_days = 0;
 let late_days = 0;

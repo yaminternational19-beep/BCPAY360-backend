@@ -7,11 +7,10 @@ import { verifyEmployeeToken, requireRole } from "../../middlewares/auth.middlew
 
 const router = express.Router();
 
-// Employee auth
-router.use(verifyEmployeeToken);
+
 router.use(requireRole("EMPLOYEE"));
 
-router.get("/payroll", getAllEmployeePayrollData);
+router.get("/payroll", verifyEmployeeToken, getAllEmployeePayrollData);
 
 
 

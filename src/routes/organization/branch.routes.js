@@ -12,13 +12,13 @@ import { allowRoles, verifyToken } from "../../middlewares/auth.middleware.js";
 const router = express.Router();
 
 /* PROTECTED ROUTES */
-router.use(verifyToken);
+
 router.use(allowRoles("COMPANY_ADMIN"));
 
-router.post("/", createBranch);
-router.get("/", listBranches);
-router.put("/:id", updateBranch);
-router.patch("/:id/status", toggleBranchStatus);
-router.delete("/:id", deleteBranch);
+router.post("/", verifyToken, createBranch);
+router.get("/", verifyToken, listBranches);
+router.put("/:id", verifyToken, updateBranch);
+router.patch("/:id/status", verifyToken, toggleBranchStatus);
+router.delete("/:id", verifyToken, deleteBranch);
 
 export default router;

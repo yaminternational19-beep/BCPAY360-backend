@@ -10,11 +10,11 @@ import { verifyEmployeeToken, requireRole } from "../../middlewares/auth.middlew
 const router = express.Router();
 
 // Employee auth
-router.use(verifyEmployeeToken);
+
 router.use(requireRole("EMPLOYEE"));
 
-router.get("/leave/types", getAvailableLeaveTypes);
-router.post("/leave/apply", applyLeave);
-router.get("/leave/history", getLeaveHistory);
+router.get("/leave/types",verifyEmployeeToken, getAvailableLeaveTypes);
+router.post("/leave/apply", verifyEmployeeToken, applyLeave);
+router.get("/leave/history", verifyEmployeeToken, getLeaveHistory);
 
 export default router;

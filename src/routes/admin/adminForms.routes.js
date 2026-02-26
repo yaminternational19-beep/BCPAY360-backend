@@ -18,19 +18,19 @@ const router = express.Router();
 router.options("*", (_, res) => res.sendStatus(200));
 
 /* 🔐 AUTH */
-router.use(verifyToken);
+
 router.use(allowRoles("COMPANY_ADMIN", "SUPER_ADMIN", "HR"));
 
 /* =====================
    LIST EMPLOYEES BY FORM
 ===================== */
-router.get("/", getEmployeesByForm);
+router.get("/",verifyToken, getEmployeesByForm);
 
 /* =====================
    UPLOAD (NEW)
 ===================== */
 router.post(
-  "/upload",
+  "/upload",verifyToken,
   uploadDocument,
   handleMulterError,
   uploadEmployeeForm
@@ -40,7 +40,7 @@ router.post(
    REPLACE (EXISTING)
 ===================== */
 router.put(
-  "/replace",
+  "/replace",verifyToken,
   uploadDocument,        // ✅ REQUIRED
   handleMulterError,     // ✅ REQUIRED
   replaceEmployeeForm
@@ -50,7 +50,7 @@ router.put(
    DELETE
 ===================== */
 router.delete(
-  "/delete",
+  "/delete",verifyToken,
   deleteEmployeeForm
 );
 

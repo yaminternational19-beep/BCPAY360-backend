@@ -47,7 +47,7 @@ import suppoptreq from "./routes/employee/support.route.js";
 
 import editEmployeeProfile from "./routes/employee/employee.routes.js";
 
-import getContent from "./routes/employee/getContent.routes.js";
+
 import  getFaqs  from "./routes/employee/faq.routes.js";
 import deactivateAccount from "./routes/employee/deactivateAccount.routes.js";
 import notificationRoutes from "./routes/employee/notification.routes.js";
@@ -186,7 +186,7 @@ app.use("/api/employee-documents", employeeDocumentRoutes);
 app.use("/api/employee/auth", employeeAuthRoutes);
 
 /* DASHBOARD (KEEP LAST) */
-app.use("/api", dashboardRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 app.use("/api/employee/attendance", attendanceRoutes);
 
@@ -225,11 +225,15 @@ app.use("/api/admin", helpsupport)
 app.use("/api/admin", FandQ);
 app.use("/api/admin", broadcastRoutes);
 
-app.use("/api/employee", getContent);
+
 app.use("/api/employee", getFaqs);
 
 app.use("/api/employee", deactivateAccount);
 app.use("/api/employee/notifications", notificationRoutes);
 
+
+import publicContentRoutes from "./routes/public/content.routes.js";
+
+app.use("/api/public", publicContentRoutes);
 
 export default app;

@@ -14,12 +14,12 @@ const router = express.Router();
 router.get("/public", verifyToken, listDepartmentsPublic);
 
 /* PROTECTED */
-router.use(verifyToken);
+
 router.use(allowRoles("COMPANY_ADMIN"));
 
-router.post("/", createDepartment);
-router.get("/", listDepartments);
-router.put("/:id", updateDepartment);
-router.delete("/:id", deleteDepartment);
+router.post("/", verifyToken, createDepartment);
+router.get("/", verifyToken, listDepartments);
+router.put("/:id", verifyToken, updateDepartment);
+router.delete("/:id", verifyToken, deleteDepartment);
 
 export default router;

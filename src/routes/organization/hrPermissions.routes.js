@@ -11,12 +11,12 @@ import { allowRoles, verifyToken } from "../../middlewares/auth.middleware.js";
 const router = express.Router();
 
 /* 🔐 ADMIN ONLY */
-router.use(verifyToken);
+
 router.use(allowRoles("COMPANY_ADMIN"));
 
-router.get("/:hrId", getHRPermissions);
-router.post("/:hrId", saveHRPermissions);
-router.delete("/:hrId/:moduleKey", deleteHRPermission);
-router.delete("/:hrId", resetHRPermissions);
+router.get("/:hrId", verifyToken, getHRPermissions);
+router.post("/:hrId", verifyToken, saveHRPermissions);
+router.delete("/:hrId/:moduleKey", verifyToken, deleteHRPermission);
+router.delete("/:hrId", verifyToken, resetHRPermissions);
 
 export default router;

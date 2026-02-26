@@ -7,10 +7,10 @@ import {
 } from "../../controllers/admin/employee_document.controller.js";
 
 const router = express.Router();
-router.use(verifyToken);
+
 
 // Upload single document with multer middleware
-router.post("/", uploadDocument, handleMulterError, add_employee_document);
-router.get("/:employee_code", list_employee_documents);
+router.post("/",verifyToken, uploadDocument, handleMulterError, add_employee_document);
+router.get("/:employee_code",verifyToken, list_employee_documents);
 
 export default router;

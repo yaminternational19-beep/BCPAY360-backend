@@ -10,7 +10,7 @@ const router = express.Router();
   EMP    → blocked
 */
 router.get(
-  "/dashboard",
+  "/",
   verifyToken,
   allowRoles("COMPANY_ADMIN", "HR"),
   getDashboard
@@ -18,3 +18,4 @@ router.get(
 
 
 export default router;
+  

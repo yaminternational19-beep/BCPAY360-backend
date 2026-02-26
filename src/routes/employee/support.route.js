@@ -12,14 +12,14 @@ const router = express.Router();
 /**
  * EMPLOYEE – HELP & SUPPORT
  */
-router.use(verifyEmployeeToken);
+
 
 // Create support request
-router.post("/support", createSupportTicket);
+router.post("/support",verifyEmployeeToken, createSupportTicket);
 
 // Get employee’s own support requests
-router.get("/support", getMySupportTickets);
+router.get("/support", verifyEmployeeToken, getMySupportTickets);
 
-router.get("/support-details", getContactInformation)
+router.get("/support-details", verifyEmployeeToken, getContactInformation)
 
 export default router;

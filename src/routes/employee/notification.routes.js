@@ -8,12 +8,12 @@ import { verifyEmployeeToken } from "../../middlewares/auth.middleware.js";
 
 const router = express.Router();
 
-router.use(verifyEmployeeToken);
+
 
 /* GET notifications (with unread count included) */
-router.get("/", getNotifications);
+router.get("/",verifyEmployeeToken, getNotifications);
 
 /* Single action API (read / read-all / delete) */
-router.patch("/action", notificationAction);
+router.patch("/action", verifyEmployeeToken, notificationAction);
 
 export default router;
