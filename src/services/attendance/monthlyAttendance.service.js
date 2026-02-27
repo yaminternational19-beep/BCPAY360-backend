@@ -1,9 +1,5 @@
 import db from "../../models/db.js";
 
-/**
- * MONTHLY / RANGE Attendance View (Admin)
- * Branch-holiday driven, joining-date aware, HR-correct
- */
 export const getMonthlyAttendance = async ({
   companyId,
   fromDate,
@@ -20,12 +16,34 @@ export const getMonthlyAttendance = async ({
 
   const offset = (page - 1) * limit;
 
+  /* ================= DATE HELPERS ================= */
+
+  const formatDate = d => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const todayStr = formatDate(today);
 
-  /* ===========================
-     FILTER CONDITIONS
-  =========================== */
+  const start = new Date(fromDate);
+  const end = new Date(toDate);
+
+  start.setHours(0, 0, 0, 0);
+  end.setHours(0, 0, 0, 0);
+
+  if (start > end) {
+    throw new Error("Invalid date range");
+  }
+
+  const totalDays =
+    Math.floor((end - start) / (1000 * 60 * 60 * 24)) + 1;
+
+  /* ================= FILTER ================= */
+
   const conditions = [];
   const values = [companyId];
 
@@ -44,20 +62,18 @@ export const getMonthlyAttendance = async ({
     values.push(shiftId);
   }
 
-  const whereClause = conditions.length
-    ? " AND " + conditions.join(" AND ")
-    : "";
+  const whereClause =
+    conditions.length ? " AND " + conditions.join(" AND ") : "";
 
-  /* ===========================
-     EMPLOYEES
-  =========================== */
+  /* ================= EMPLOYEES ================= */
+
   const [employees] = await db.query(
     `
     SELECT
       e.id AS employee_id,
       e.employee_code,
       e.full_name,
-      e.joining_date,
+      DATE_FORMAT(e.joining_date,'%Y-%m-%d') AS joining_date,
       e.branch_id,
       ep.profile_photo_path,
       dept.department_name AS department,
@@ -86,14 +102,12 @@ export const getMonthlyAttendance = async ({
 
   const employeeIds = employees.map(e => e.employee_id);
 
-  /* ===========================
-     BRANCH HOLIDAYS (SOURCE OF TRUTH)
-  =========================== */
+  /* ================= HOLIDAYS ================= */
+
   const [holidayRows] = await db.query(
     `
-    SELECT
-      branch_id,
-      DATE_FORMAT(holiday_date, '%Y-%m-%d') AS holiday_date
+    SELECT branch_id,
+           DATE_FORMAT(holiday_date,'%Y-%m-%d') AS holiday_date
     FROM branch_holidays
     WHERE company_id = ?
       AND holiday_date BETWEEN ? AND ?
@@ -103,27 +117,21 @@ export const getMonthlyAttendance = async ({
     [companyId, fromDate, toDate]
   );
 
-  /*
-    holidayMap = {
-      branchId: Set(['2026-01-26', '2026-01-28'])
-    }
-  */
   const holidayMap = {};
-  for (const row of holidayRows) {
+  holidayRows.forEach(row => {
     if (!holidayMap[row.branch_id]) {
       holidayMap[row.branch_id] = new Set();
     }
     holidayMap[row.branch_id].add(row.holiday_date);
-  }
+  });
 
-  /* ===========================
-     ATTENDANCE DATA
-  =========================== */
+  /* ================= ATTENDANCE ================= */
+
   const [attendanceRows] = await db.query(
     `
     SELECT
       employee_id,
-      DATE_FORMAT(attendance_date, '%Y-%m-%d') AS attendance_date,
+      DATE_FORMAT(attendance_date,'%Y-%m-%d') AS attendance_date,
       check_in_time
     FROM attendance
     WHERE employee_id IN (?)
@@ -132,28 +140,15 @@ export const getMonthlyAttendance = async ({
     [employeeIds, fromDate, toDate]
   );
 
-  /*
-    attendanceMap = {
-      "employeeId_2026-01-28": "P" | "A"
-    }
-  */
   const attendanceMap = {};
-  for (const row of attendanceRows) {
-    const key = `${row.employee_id}_${row.attendance_date}`;
-    attendanceMap[key] = row.check_in_time ? "P" : "A";
-  }
+  attendanceRows.forEach(row => {
+    attendanceMap[
+      `${row.employee_id}_${row.attendance_date}`
+    ] = row;
+  });
 
-  /* ===========================
-     DATE RANGE SETUP
-  =========================== */
-  const start = new Date(fromDate);
-  const end = new Date(toDate);
-  const totalDays =
-    Math.floor((end - start) / (1000 * 60 * 60 * 24)) + 1;
+  /* ================= BUILD MONTHLY ================= */
 
-  /* ===========================
-     FINAL DATA BUILD
-  =========================== */
   const data = employees.map((emp, index) => {
     const days = {};
     const totals = {
@@ -163,49 +158,58 @@ export const getMonthlyAttendance = async ({
       unmarked: 0
     };
 
-    const joiningDate = emp.joining_date
-      ? new Date(emp.joining_date)
-      : null;
-
-    if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
+    const joiningDateStr = emp.joining_date;
 
     for (let i = 0; i < totalDays; i++) {
-      const currentDate = new Date(start);
-      currentDate.setDate(start.getDate() + i);
-      currentDate.setHours(0, 0, 0, 0);
+      const current = new Date(start);
+      current.setDate(start.getDate() + i);
 
-      const dateKey = currentDate.toISOString().slice(0, 10);
-      const dayNumber = currentDate.getDate();
+      const dateStr = formatDate(current);
+      const dayNumber = current.getDate();
 
-      let value = "-";
+      let value;
 
-      /* BEFORE JOINING */
-      if (joiningDate && currentDate < joiningDate) {
+      // BEFORE JOINING
+      if (dateStr < joiningDateStr) {
         value = "-";
       }
 
-      /* BRANCH HOLIDAY */
+      // FUTURE
+      else if (dateStr > todayStr) {
+        value = "U";
+        totals.unmarked++;
+      }
+
+      // HOLIDAY
       else if (
         holidayMap[emp.branch_id] &&
-        holidayMap[emp.branch_id].has(dateKey)
+        holidayMap[emp.branch_id].has(dateStr)
       ) {
         value = "H";
         totals.holiday++;
       }
 
-      /* FUTURE */
-      else if (currentDate > today) {
-        value = "U";
-        totals.unmarked++;
+      // ATTENDANCE EXISTS
+      else if (
+        attendanceMap[`${emp.employee_id}_${dateStr}`]
+      ) {
+        const record =
+          attendanceMap[`${emp.employee_id}_${dateStr}`];
+
+        // 🔥 TRUE PRESENT CHECK
+        if (record.check_in_time) {
+          value = "P";
+          totals.present++;
+        } else {
+          value = "A";
+          totals.absent++;
+        }
       }
 
-      /* PAST + TODAY */
+      // NO RECORD
       else {
-        value =
-          attendanceMap[`${emp.employee_id}_${dateKey}`] || "A";
-
-        if (value === "P") totals.present++;
-        else totals.absent++;
+        value = "A";
+        totals.absent++;
       }
 
       days[dayNumber] = value;
@@ -224,9 +228,8 @@ export const getMonthlyAttendance = async ({
     };
   });
 
-  /* ===========================
-     TOTAL COUNT
-  =========================== */
+  /* ================= COUNT ================= */
+
   const [[{ total_records }]] = await db.query(
     `
     SELECT COUNT(*) AS total_records
@@ -237,9 +240,6 @@ export const getMonthlyAttendance = async ({
     values
   );
 
-  /* ===========================
-     FINAL RESPONSE
-  =========================== */
   return {
     viewType: "MONTHLY",
     fromDate,

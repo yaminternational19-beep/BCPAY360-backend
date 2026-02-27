@@ -1,34 +1,26 @@
 import db from "../../models/db.js";
 import { getS3SignedUrl } from "../../utils/s3Upload.util.js";
 
-/**
- * HISTORY Attendance View (Admin)
- * Calendar-driven, branch-holiday aware, gapless
- */
 export const getHistoryAttendance = async ({
   companyId,
   employeeId,
   from,
-  to,
-  page = 1,
-  limit = 31
+  to
 }) => {
-  const offset = (page - 1) * limit;
-
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  /* ===========================
-     HELPERS
-  =========================== */
-  const toLocalDateTime = (d, t) =>
-    new Date(`${d}T${t}+05:30`);
+  const formatDate = d => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
 
-  const formatDate = d => d.toISOString().slice(0, 10);
+  const todayStr = formatDate(today);
 
-  /* ===========================
-     1️⃣ EMPLOYEE
-  =========================== */
+  /* ================= EMPLOYEE ================= */
+
   const [[employee]] = await db.query(
     `
     SELECT
@@ -36,16 +28,16 @@ export const getHistoryAttendance = async ({
       e.employee_code,
       e.full_name,
       e.employee_status,
-      e.joining_date,
+      DATE_FORMAT(e.joining_date,'%Y-%m-%d') AS joining_date,
       e.branch_id,
       dept.department_name AS department,
       desig.designation_name AS designation,
       sh.shift_name,
       ep.profile_photo_path
     FROM employees e
-    LEFT JOIN departments dept ON dept.id = e.department_id AND dept.is_active = 1
-    LEFT JOIN designations desig ON desig.id = e.designation_id AND desig.is_active = 1
-    LEFT JOIN shifts sh ON sh.id = e.shift_id AND sh.is_active = 1
+    LEFT JOIN departments dept ON dept.id = e.department_id
+    LEFT JOIN designations desig ON desig.id = e.designation_id
+    LEFT JOIN shifts sh ON sh.id = e.shift_id
     LEFT JOIN employee_profiles ep ON ep.employee_id = e.id
     WHERE e.id = ?
       AND e.company_id = ?
@@ -53,58 +45,66 @@ export const getHistoryAttendance = async ({
     [employeeId, companyId]
   );
 
-  if (!employee) throw new Error("Employee not found");
+  if (!employee) {
+    throw new Error("Employee not found");
+  }
 
-  const joiningDate = employee.joining_date
-    ? new Date(employee.joining_date)
-    : null;
-  if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
+  const joiningDateStr = employee.joining_date;
 
-  /* ===========================
-     2️⃣ DATE RANGE
-  =========================== */
-  const startDate = from ? new Date(from) : new Date(joiningDate || today);
-  const endDate = to ? new Date(to) : today;
+  /* ================= DATE RANGE ================= */
+
+  let startDate = from
+    ? new Date(from)
+    : new Date(joiningDateStr);
+
+  let endDate = to
+    ? new Date(to)
+    : today;
 
   startDate.setHours(0, 0, 0, 0);
   endDate.setHours(0, 0, 0, 0);
 
+  if (startDate > endDate) {
+    throw new Error("Invalid date range");
+  }
+
+  const startStr = formatDate(startDate);
+  const endStr = formatDate(endDate);
+
   const totalDays =
     Math.floor((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
 
-  /* ===========================
-     3️⃣ ATTENDANCE ROWS
-  =========================== */
+  /* ================= ATTENDANCE ================= */
+
   const [attendanceRows] = await db.query(
     `
     SELECT
-      attendance_date,
+      DATE_FORMAT(attendance_date,'%Y-%m-%d') AS attendance_date,
+      status,
       check_in_time,
       check_out_time,
       check_in_lat,
       check_in_lng,
       check_out_lat,
       check_out_lng,
-      attendance_source,
-      shift_id
+      attendance_source
     FROM attendance
     WHERE employee_id = ?
       AND attendance_date BETWEEN ? AND ?
     `,
-    [employeeId, formatDate(startDate), formatDate(endDate)]
+    [employeeId, startStr, endStr]
   );
 
   const attendanceMap = {};
-  for (const r of attendanceRows) {
-    attendanceMap[formatDate(new Date(r.attendance_date))] = r;
-  }
+  attendanceRows.forEach(row => {
+    attendanceMap[row.attendance_date] = row;
+  });
 
-  /* ===========================
-     4️⃣ BRANCH HOLIDAYS
-  =========================== */
+  /* ================= HOLIDAYS ================= */
+
   const [holidayRows] = await db.query(
     `
-    SELECT DATE_FORMAT(holiday_date, '%Y-%m-%d') AS holiday_date
+    SELECT DATE_FORMAT(holiday_date,'%Y-%m-%d') AS holiday_date
     FROM branch_holidays
     WHERE company_id = ?
       AND branch_id = ?
@@ -114,65 +114,62 @@ export const getHistoryAttendance = async ({
     [companyId, employee.branch_id]
   );
 
-  const holidaySet = new Set(holidayRows.map(h => h.holiday_date));
+  const holidaySet = new Set(
+    holidayRows.map(h => h.holiday_date)
+  );
 
-  /* ===========================
-     5️⃣ BUILD CALENDAR DATA
-  =========================== */
-  const fullData = [];
+  /* ================= BUILD CALENDAR ================= */
+
+  const data = [];
 
   for (let i = 0; i < totalDays; i++) {
-    const currentDate = new Date(startDate);
-    currentDate.setDate(startDate.getDate() + i);
+    const current = new Date(startDate);
+    current.setDate(startDate.getDate() + i);
 
-    const dateKey = formatDate(currentDate);
-    let status = "UNMARKED";
-    let late_minutes = 0;
-    let early_checkout_minutes = 0;
-    let overtime_minutes = 0;
+    const dateStr = formatDate(current);
+    const att = attendanceMap[dateStr];
 
-    const att = attendanceMap[dateKey];
+    let status;
 
-    /* BEFORE JOINING */
-    if (joiningDate && currentDate < joiningDate) {
+    // BEFORE JOINING
+    if (dateStr < joiningDateStr) {
       status = "-";
     }
 
-    /* HOLIDAY */
-    else if (holidaySet.has(dateKey)) {
-      status = "H";
-    }
-
-    /* FUTURE */
-    else if (currentDate > today) {
+    // FUTURE
+    else if (dateStr > todayStr) {
       status = "UNMARKED";
     }
 
-    /* ATTENDANCE EXISTS */
+    // HOLIDAY
+    else if (holidaySet.has(dateStr)) {
+      status = "H";
+    }
+
+    // ATTENDANCE EXISTS
     else if (att) {
-      if (att.check_in_time && att.check_out_time) {
+      if (
+        att.status === "CHECKED_OUT" ||
+        att.status === "LATE" ||
+        att.status === "HALF_DAY"
+      ) {
         status = "PRESENT";
-      } else if (att.check_in_time) {
-        status = "CHECKED_IN";
       } else {
         status = "ABSENT";
       }
     }
 
-    /* PAST NO ATTENDANCE */
+    // NO RECORD
     else {
       status = "ABSENT";
     }
 
-    fullData.push({
-      date: dateKey,
+    data.push({
+      date: dateStr,
       shift_name: employee.shift_name || "-",
       status,
       check_in_time: att?.check_in_time || null,
       check_out_time: att?.check_out_time || null,
-      late_minutes,
-      early_checkout_minutes,
-      overtime_minutes,
       check_in_location:
         att?.check_in_lat && att?.check_in_lng
           ? `${att.check_in_lat}, ${att.check_in_lng}`
@@ -185,33 +182,23 @@ export const getHistoryAttendance = async ({
     });
   }
 
-  /* ===========================
-     PAGINATION
-  =========================== */
-  const pagedData = fullData
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(offset, offset + limit);
+  /* ================= RESPONSE ================= */
 
-  /* ===========================
-     FINAL RESPONSE
-  =========================== */
   return {
+    success: true,
     viewType: "HISTORY",
     employee: {
       id: employee.id,
       code: employee.employee_code,
       name: employee.full_name,
-      profile_photo_url: await getS3SignedUrl(employee.profile_photo_path),
+      profile_photo_url: employee.profile_photo_path
+        ? await getS3SignedUrl(employee.profile_photo_path)
+        : null,
       department: employee.department || "-",
       designation: employee.designation || "-",
       shift: employee.shift_name || "-",
       status: employee.employee_status
     },
-    data: pagedData,
-    pagination: {
-      page,
-      limit,
-      total_records: fullData.length
-    }
+    data
   };
 };

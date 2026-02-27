@@ -12,7 +12,7 @@ import { verifyToken, requireRole } from "../../middlewares/auth.middleware.js";
 const router = express.Router();
 
 // Auth
-
+router.use(verifyToken);
 router.use(requireRole("COMPANY_ADMIN", "HR"));
 
 // CRUD

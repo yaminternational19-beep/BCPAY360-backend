@@ -98,7 +98,7 @@ export const deactivateAccount = async (req, res) => {
     await connection.commit();
 
     return res.status(200).json({
-      success: true,
+      success: false,
       message:
         "Your account has been deactivated successfully. Please contact admin to reactivate your account."
     });
