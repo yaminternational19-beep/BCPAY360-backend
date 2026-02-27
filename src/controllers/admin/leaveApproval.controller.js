@@ -17,6 +17,27 @@ export const getPendingLeaves = async (req, res) => {
       });
     }
 
+    // Pagination params
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    /* ===========================
+       GET TOTAL COUNT
+    =========================== */
+    const [[{ total }]] = await db.query(
+      `
+      SELECT COUNT(*) AS total
+      FROM employee_leave_requests
+      WHERE company_id = ?
+        AND status = 'PENDING'
+      `,
+      [company_id]
+    );
+
+    /* ===========================
+       GET PAGINATED DATA
+    =========================== */
     const [rows] = await db.query(
       `
       SELECT
@@ -42,6 +63,7 @@ export const getPendingLeaves = async (req, res) => {
         elr.total_days,
         elr.reason,
         elr.applied_at
+
       FROM employee_leave_requests elr
       JOIN employees e
         ON e.id = elr.employee_id
@@ -51,23 +73,57 @@ export const getPendingLeaves = async (req, res) => {
         ON s.id = e.shift_id
       JOIN leave_master lm
         ON lm.id = elr.leave_master_id
+
       WHERE elr.company_id = ?
         AND elr.status = 'PENDING'
+
       ORDER BY elr.applied_at ASC
+      LIMIT ? OFFSET ?
       `,
-      [company_id]
+      [company_id, limit, offset]
     );
 
+    /* ===========================
+   STATUS COUNTS (DASHBOARD)
+=========================== */
+
+const [[summary]] = await db.query(
+  `
+  SELECT
+    SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END) AS pending_count,
+    SUM(CASE WHEN status = 'APPROVED' THEN 1 ELSE 0 END) AS approved_count,
+    SUM(
+      CASE 
+        WHEN status = 'APPROVED'
+         AND CURDATE() BETWEEN DATE(from_date) AND DATE(to_date)
+        THEN 1 ELSE 0
+      END
+    ) AS on_leave_today_count
+  FROM employee_leave_requests
+  WHERE company_id = ?
+  `,
+  [company_id]
+);
+
     return res.json({
-      success: true,
-      meta: {
-        count: rows.length
-      },
-      data: rows
-    });
+  success: true,
+  meta: {
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+    count: rows.length
+  },
+  summary: {
+    pending: summary.pending_count || 0,
+    approved: summary.approved_count || 0,
+    onLeaveToday: summary.on_leave_today_count || 0
+  },
+  data: rows
+});
 
   } catch (error) {
-    logger.error(MODULE_NAME, "Failed to get pending leaves", error);
+    logger.error("LEAVE_CONTROLLER", "Failed to get pending leaves", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error"
@@ -256,7 +312,6 @@ export const getLeaveHistory = async (req, res) => {
   try {
     const { company_id } = req.user;
 
-    // 🔒 Hard guard
     if (!company_id) {
       return res.status(401).json({
         success: false,
@@ -264,6 +319,27 @@ export const getLeaveHistory = async (req, res) => {
       });
     }
 
+    // Pagination params
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    /* ===========================
+       GET TOTAL COUNT
+    =========================== */
+    const [[{ total }]] = await db.query(
+      `
+      SELECT COUNT(*) AS total
+      FROM employee_leave_requests
+      WHERE company_id = ?
+        AND status IN ('APPROVED','REJECTED','CANCELLED')
+      `,
+      [company_id]
+    );
+
+    /* ===========================
+       GET PAGINATED DATA
+    =========================== */
     const [rows] = await db.query(
       `
       SELECT
@@ -290,6 +366,7 @@ export const getLeaveHistory = async (req, res) => {
         elr.total_days,
         elr.status,
         elr.applied_at
+
       FROM employee_leave_requests elr
       JOIN employees e
         ON e.id = elr.employee_id
@@ -299,16 +376,23 @@ export const getLeaveHistory = async (req, res) => {
         ON s.id = e.shift_id
       JOIN leave_master lm
         ON lm.id = elr.leave_master_id
+
       WHERE elr.company_id = ?
         AND elr.status IN ('APPROVED','REJECTED','CANCELLED')
+
       ORDER BY elr.applied_at DESC
+      LIMIT ? OFFSET ?
       `,
-      [company_id]
+      [company_id, limit, offset]
     );
 
     return res.status(200).json({
       success: true,
       meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
         count: rows.length
       },
       data: rows
