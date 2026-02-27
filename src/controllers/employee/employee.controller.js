@@ -122,41 +122,41 @@ export const updateEmployeeProfile = async (req, res) => {
     --------------------------------- */
 
     const employeeUpdateFields = [];
-const employeeUpdateValues = [];
+    const employeeUpdateValues = [];
 
-if (full_name !== undefined) {
-  employeeUpdateFields.push("full_name = ?");
-  employeeUpdateValues.push(full_name);
-}
+    if (full_name !== undefined) {
+      employeeUpdateFields.push("full_name = ?");
+      employeeUpdateValues.push(full_name);
+    }
 
-if (email !== undefined) {
-  employeeUpdateFields.push("email = ?");
-  employeeUpdateValues.push(email);
-}
-if (country_code !== undefined) {
-  employeeUpdateFields.push("country_code = ?");
-  employeeUpdateValues.push(country_code);
-}
+    if (email !== undefined) {
+      employeeUpdateFields.push("email = ?");
+      employeeUpdateValues.push(email);
+    }
+    if (country_code !== undefined) {
+      employeeUpdateFields.push("country_code = ?");
+      employeeUpdateValues.push(country_code);
+    }
 
-if (phone !== undefined) {
-  const numericPhone = phone.replace(/\D/g, "");
+    if (phone !== undefined) {
+      const numericPhone = phone.replace(/\D/g, "");
 
-  if (numericPhone.length < 8 || numericPhone.length > 15) {
-    throw new Error("Invalid phone number");
-  }
+      if (numericPhone.length < 8 || numericPhone.length > 15) {
+        throw new Error("Invalid phone number");
+      }
 
-  employeeUpdateFields.push("phone = ?");
-  employeeUpdateValues.push(numericPhone);
-}
+      employeeUpdateFields.push("phone = ?");
+      employeeUpdateValues.push(numericPhone);
+    }
 
-if (employeeUpdateFields.length > 0) {
-  await connection.query(
-    `UPDATE employees
+    if (employeeUpdateFields.length > 0) {
+      await connection.query(
+        `UPDATE employees
      SET ${employeeUpdateFields.join(", ")}
      WHERE id = ?`,
-    [...employeeUpdateValues, employeeId]
-  );
-}
+        [...employeeUpdateValues, employeeId]
+      );
+    }
 
     const [[profileRow]] = await connection.query(
       `SELECT id FROM employee_profiles WHERE employee_id = ?`,
@@ -164,35 +164,35 @@ if (employeeUpdateFields.length > 0) {
     );
 
     const profileUpdateFields = [];
-const profileUpdateValues = [];
+    const profileUpdateValues = [];
 
-if (address !== undefined) {
-  profileUpdateFields.push("address = ?");
-  profileUpdateValues.push(address);
-}
+    if (address !== undefined) {
+      profileUpdateFields.push("address = ?");
+      profileUpdateValues.push(address);
+    }
 
-if (permanent_address !== undefined) {
-  profileUpdateFields.push("permanent_address = ?");
-  profileUpdateValues.push(permanent_address);
-}
+    if (permanent_address !== undefined) {
+      profileUpdateFields.push("permanent_address = ?");
+      profileUpdateValues.push(permanent_address);
+    }
 
-if (profilePhotoPath !== null) {
-  profileUpdateFields.push("profile_photo_path = ?");
-  profileUpdateValues.push(profilePhotoPath);
-}
+    if (profilePhotoPath !== null) {
+      profileUpdateFields.push("profile_photo_path = ?");
+      profileUpdateValues.push(profilePhotoPath);
+    }
 
-profileUpdateFields.push("last_updated_by_role = 'EMPLOYEE'");
-profileUpdateFields.push("last_updated_by_id = ?");
-profileUpdateValues.push(employeeId);
+    profileUpdateFields.push("last_updated_by_role = 'EMPLOYEE'");
+    profileUpdateFields.push("last_updated_by_id = ?");
+    profileUpdateValues.push(employeeId);
 
-if (profileRow && profileUpdateFields.length > 0) {
-  await connection.query(
-    `UPDATE employee_profiles
+    if (profileRow && profileUpdateFields.length > 0) {
+      await connection.query(
+        `UPDATE employee_profiles
      SET ${profileUpdateFields.join(", ")}
      WHERE employee_id = ?`,
-    [...profileUpdateValues, employeeId]
-  );
-}
+        [...profileUpdateValues, employeeId]
+      );
+    }
 
     await connection.commit();
 

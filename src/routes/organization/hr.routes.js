@@ -19,7 +19,7 @@ router.post("/pre-login", hrPreLogin);
 router.post("/verify-otp", hrVerifyOtp);
 
 /* ===== ADMIN ONLY ===== */
-
+router.use(verifyToken);
 router.use(allowRoles("COMPANY_ADMIN"));
 
 router.post("/", verifyToken, createHR);

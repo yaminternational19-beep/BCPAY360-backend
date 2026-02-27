@@ -24,7 +24,7 @@ router.get("/last-code", verifyToken, allowRoles("COMPANY_ADMIN", "HR"), getLast
 // File uploads for employee creation and update
 router.post("/", verifyToken, allowRoles("COMPANY_ADMIN", "HR"), uploadEmployeeFiles, handleMulterError, create_employee);
 router.get("/", verifyToken, allowRoles("COMPANY_ADMIN", "HR"), list_employees);
-router.get("/:id", verifyToken,  allowRoles("COMPANY_ADMIN", "HR", "EMPLOYEE"), get_employee_by_id);
+router.get("/:id", verifyToken, allowRoles("COMPANY_ADMIN", "HR", "EMPLOYEE"), get_employee_by_id);
 router.put("/:id", verifyToken, allowRoles("COMPANY_ADMIN", "HR"), uploadEmployeeFiles, handleMulterError, update_employee);
 router.put("/code/:employee_code", verifyToken, allowRoles("COMPANY_ADMIN", "HR"), uploadEmployeeFiles, handleMulterError, update_employee_by_code);
 router.patch("/:id/status", verifyToken, allowRoles("COMPANY_ADMIN", "HR"), toggle_employee_status);

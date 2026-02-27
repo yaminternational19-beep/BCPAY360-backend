@@ -151,6 +151,8 @@ export const companyAdminPreLogin = async (req, res) => {
    COMPANY ADMIN OTP VERIFY OR RESEND
 ===================================================== */
 export const companyAdminVerifyOtp = async (req, res) => {
+
+  console.log("AUTH HEADER:", req.headers.authorization);
   const { tempLoginId, otp, action = "VERIFY" } = req.body;
 
   if (!tempLoginId) {

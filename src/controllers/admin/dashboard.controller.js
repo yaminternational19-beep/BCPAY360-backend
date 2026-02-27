@@ -4,19 +4,17 @@ import logger from "../../utils/logger.js";
 const MODULE_NAME = "ADMIN_DASHBOARD_CONTROLLER";
 
 export const getDashboard = async (req, res) => {
+  // console.time("DASHBOARD");
+
   try {
     const { company_id, role, id: user_id } = req.user;
     const period = req.query.period || "TODAY";
 
-    /* =====================================================
-       DATE RANGE
-    ===================================================== */
     const now = new Date();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     let fromDate = new Date(today);
-    let toDate = new Date(today);
 
     if (period === "WEEK") {
       fromDate.setDate(today.getDate() - 6);
@@ -27,271 +25,268 @@ export const getDashboard = async (req, res) => {
     }
 
     const fromDateSQL = fromDate.toISOString().slice(0, 10);
-    const toDateSQL = toDate.toISOString().slice(0, 10);
+    const todaySQL = today.toISOString().slice(0, 10);
 
-    /* =====================================================
-       COMPANY
-    ===================================================== */
-    const [[company]] = await db.query(
-      `SELECT id, name FROM companies WHERE id = ?`,
-      [company_id]
-    );
+    /* ================= PARALLEL QUERIES ================= */
 
-    /* =====================================================
-       ALL BRANCHES (SOURCE OF TRUTH)
-    ===================================================== */
-    const [branches] = await db.query(
-      `SELECT id, branch_name FROM branches WHERE company_id = ?`,
-      [company_id]
-    );
+    const [
+      companyRes,
+      orgRes,
+      employeeRes,
+      leaveRes,
+      salaryRes,
+      branchListRes,
+      branchEmpRes,
+      branchSalaryRes
+    ] = await Promise.all([
 
-    /* =====================================================
-       EMPLOYEES + SHIFT
-    ===================================================== */
-    const [employees] = await db.query(
-      `
-      SELECT
-        e.id,
-        e.branch_id,
-        e.employee_status,
-        e.joining_date,
-        s.end_time AS shift_end_time
-      FROM employees e
-      LEFT JOIN shifts s ON s.id = e.shift_id
-      WHERE e.company_id = ?
-      `,
-      [company_id]
-    );
+      // Company
+      db.query(
+        `SELECT id, name FROM companies WHERE id = ?`,
+        [company_id]
+      ),
 
-    /* =====================================================
-       BRANCH MAP (INITIALIZE ALL BRANCHES)
-    ===================================================== */
-    const branchMap = {};
-    for (const b of branches) {
-      branchMap[b.id] = {
-        branch_id: b.id,
-        branch_name: b.branch_name,
-        total: 0,
-        active: 0,
-        inactive: 0,
-        employees: []
-      };
-    }
+      // Organization Summary
+      db.query(`
+        SELECT
+          (SELECT COUNT(*) FROM branches WHERE company_id = ?) AS total_branches,
+          (SELECT COUNT(*) FROM departments WHERE company_id = ?) AS total_departments,
+          (SELECT COUNT(*) FROM designations WHERE company_id = ?) AS total_designations,
+          (SELECT COUNT(*) FROM hr_users WHERE company_id = ?) AS total_hrs
+      `, [company_id, company_id, company_id, company_id]),
 
-    for (const e of employees) {
-      const b = branchMap[e.branch_id];
-      if (!b) continue;
+      // Employee Summary
+      db.query(`
+        SELECT
+          COUNT(*) AS total,
+          SUM(employee_status='ACTIVE') AS active,
+          SUM(employee_status='INACTIVE') AS inactive
+        FROM employees
+        WHERE company_id = ?
+      `, [company_id]),
 
-      b.total++;
-      if (e.employee_status === "ACTIVE") b.active++;
-      else b.inactive++;
+      // Leave
+      db.query(`
+        SELECT
+          SUM(status='PENDING') AS approval_pending,
+          SUM(DATE(from_date)=CURDATE()) AS today
+        FROM employee_leave_requests
+        WHERE company_id = ?
+      `, [company_id]),
 
-      b.employees.push(e);
-    }
-
-    /* =====================================================
-       HOLIDAYS
-    ===================================================== */
-    const [holidays] = await db.query(
-      `
-      SELECT
-        branch_id,
-        DATE_FORMAT(holiday_date,'%Y-%m-%d') AS holiday_date
-      FROM branch_holidays
-      WHERE company_id = ?
-        AND is_active = 1
-        AND applies_to_attendance = 1
-        AND holiday_date BETWEEN ? AND ?
-      `,
-      [company_id, fromDateSQL, toDateSQL]
-    );
-
-    const holidayMap = {};
-    for (const h of holidays) {
-      if (!holidayMap[h.branch_id]) {
-        holidayMap[h.branch_id] = new Set();
-      }
-      holidayMap[h.branch_id].add(h.holiday_date);
-    }
-
-    /* =====================================================
-       ATTENDANCE RECORDS
-    ===================================================== */
-    const [attendanceRows] = await db.query(
-      `
-      SELECT
-        employee_id,
-        DATE_FORMAT(attendance_date,'%Y-%m-%d') AS d,
-        status
-      FROM attendance
-      WHERE attendance_date BETWEEN ? AND ?
-      `,
-      [fromDateSQL, toDateSQL]
-    );
-
-    const attendanceMap = {};
-    for (const a of attendanceRows) {
-      attendanceMap[`${a.employee_id}_${a.d}`] = a.status;
-    }
-
-    /* =====================================================
-       ATTENDANCE CALCULATION
-    ===================================================== */
-    const attendanceBranches = [];
-    const companyAttendance = {
-      total: 0,
-      present: 0,
-      absent: 0,
-      unmarked: 0
-    };
-
-    const daysInRange =
-      Math.floor((toDate - fromDate) / (1000 * 60 * 60 * 24)) + 1;
-
-    for (const branch of Object.values(branchMap)) {
-      const totals = {
-        branch_id: branch.branch_id,
-        branch_name: branch.branch_name,
-        total: 0,
-        present: 0,
-        absent: 0,
-        unmarked: 0
-      };
-
-      for (const emp of branch.employees) {
-        const joiningDate = emp.joining_date
-          ? new Date(emp.joining_date)
-          : null;
-        if (joiningDate) joiningDate.setHours(0, 0, 0, 0);
-
-        for (let i = 0; i < daysInRange; i++) {
-          const d = new Date(fromDate);
-          d.setDate(fromDate.getDate() + i);
-          d.setHours(0, 0, 0, 0);
-
-          const dateKey = d.toISOString().slice(0, 10);
-
-          if (joiningDate && d < joiningDate) continue;
-
-          totals.total++;
-          companyAttendance.total++;
-
-          /* HOLIDAY */
-          if (
-            holidayMap[branch.branch_id] &&
-            holidayMap[branch.branch_id].has(dateKey)
-          ) {
-            continue;
-          }
-
-          /* FUTURE */
-          if (d > today) {
-            totals.unmarked++;
-            companyAttendance.unmarked++;
-            continue;
-          }
-
-          /* TODAY – SHIFT NOT COMPLETED */
-          if (d.getTime() === today.getTime()) {
-            let shiftEnd = new Date(d);
-            if (emp.shift_end_time) {
-              const [h, m] = emp.shift_end_time.split(":");
-              shiftEnd.setHours(h, m, 0, 0);
-            } else {
-              shiftEnd.setHours(23, 59, 59, 999);
-            }
-
-            if (now < shiftEnd) {
-              totals.unmarked++;
-              companyAttendance.unmarked++;
-              continue;
-            }
-          }
-
-          /* FINAL STATUS */
-          const status = attendanceMap[`${emp.id}_${dateKey}`];
-          if (status && status !== "ABSENT" && status !== "NOT_STARTED") {
-            totals.present++;
-            companyAttendance.present++;
-          } else {
-            totals.absent++;
-            companyAttendance.absent++;
-          }
-        }
-      }
-
-      attendanceBranches.push(totals);
-    }
-
-    /* =====================================================
-       LEAVE PENDING
-    ===================================================== */
-    const [[{ pending }]] = await db.query(
-      `
-      SELECT COUNT(*) AS pending
-      FROM employee_leave_requests
-      WHERE company_id = ?
-        AND status = 'PENDING'
-      `,
-      [company_id]
-    );
-
-    /* =====================================================
-       SALARY (CURRENT MONTH)
-    ===================================================== */
-    const [[salaryCompany]] = await db.query(
-      `
-      SELECT
-        COUNT(pee.id) AS employees_paid,
-        SUM(pee.net_salary) AS total_salary
-      FROM payroll_employee_entries pee
-      JOIN payroll_batches pb ON pb.id = pee.payroll_batch_id
-      WHERE pb.company_id = ?
+      // Salary
+      db.query(`
+        SELECT
+          COUNT(DISTINCT pee.employee_id) AS employees_paid,
+          SUM(pee.net_salary) AS total_paid
+        FROM payroll_employee_entries pee
+        JOIN payroll_batches pb ON pb.id = pee.payroll_batch_id
+        WHERE pb.company_id = ?
         AND pb.pay_month = MONTH(CURDATE())
         AND pb.pay_year = YEAR(CURDATE())
-      `,
-      [company_id]
-    );
+      `, [company_id]),
 
-    /* =====================================================
-       RESPONSE
-    ===================================================== */
+      // Branch List
+      db.query(
+        `SELECT id, branch_name FROM branches WHERE company_id = ?`,
+        [company_id]
+      ),
+
+      // Branch Employee Stats
+      db.query(`
+        SELECT
+          branch_id,
+          COUNT(*) AS total,
+          SUM(employee_status='ACTIVE') AS active,
+          SUM(employee_status='INACTIVE') AS inactive
+        FROM employees
+        WHERE company_id = ?
+        GROUP BY branch_id
+      `, [company_id]),
+
+      // Branch Salary Stats
+      db.query(`
+        SELECT
+          e.branch_id,
+          COUNT(DISTINCT pee.employee_id) AS employees_paid,
+          SUM(pee.net_salary) AS total_paid
+        FROM payroll_employee_entries pee
+        JOIN payroll_batches pb ON pb.id = pee.payroll_batch_id
+        JOIN employees e ON e.id = pee.employee_id
+        WHERE pb.company_id = ?
+        AND pb.pay_month = MONTH(CURDATE())
+        AND pb.pay_year = YEAR(CURDATE())
+        GROUP BY e.branch_id
+      `, [company_id])
+    ]);
+
+    /* ================= EXTRACT RESULTS ================= */
+
+    const company = companyRes[0][0];
+    const orgSummary = orgRes[0][0];
+    const employeeStats = employeeRes[0][0];
+    const leaveStats = leaveRes[0][0];
+    const salaryStats = salaryRes[0][0];
+    const branches = branchListRes[0];
+    const branchEmployeeStats = branchEmpRes[0];
+    const branchSalaryStats = branchSalaryRes[0];
+
+    const totalEmployees = Number(employeeStats.total || 0);
+
+    /* ================= ATTENDANCE ================= */
+
+    let present = 0;
+    let absent = 0;
+    let unmarked = 0;
+
+    if (period === "TODAY") {
+
+      const [attendanceToday] = await db.query(`
+        SELECT employee_id
+        FROM attendance a
+        JOIN employees e ON e.id = a.employee_id
+        WHERE e.company_id = ?
+        AND DATE(a.attendance_date) = CURDATE()
+      `, [company_id]);
+
+      const checkedInIds = new Set(
+        attendanceToday.map(a => a.employee_id)
+      );
+
+      const [employees] = await db.query(`
+        SELECT e.id, s.end_time
+        FROM employees e
+        LEFT JOIN shifts s ON s.id = e.shift_id
+        WHERE e.company_id = ?
+      `, [company_id]);
+
+      employees.forEach(emp => {
+
+        if (checkedInIds.has(emp.id)) {
+          present++;
+        } else {
+          const shiftEnd = new Date(today);
+          if (emp.end_time) {
+            const [h, m] = emp.end_time.split(":");
+            shiftEnd.setHours(Number(h), Number(m), 0, 0);
+          } else {
+            shiftEnd.setHours(23, 59, 59, 999);
+          }
+
+          if (now < shiftEnd) {
+            unmarked++;
+          } else {
+            absent++;
+          }
+        }
+      });
+
+    } else {
+
+      const [[attendanceAgg]] = await db.query(`
+        SELECT
+          SUM(status NOT IN ('ABSENT','NOT_STARTED')) AS present,
+          SUM(status='ABSENT') AS absent
+        FROM attendance a
+        JOIN employees e ON e.id = a.employee_id
+        WHERE e.company_id = ?
+        AND a.attendance_date BETWEEN ? AND ?
+      `, [company_id, fromDateSQL, todaySQL]);
+
+      present = Number(attendanceAgg.present || 0);
+      absent = Number(attendanceAgg.absent || 0);
+      unmarked = 0;
+    }
+
+    const presentPercentage =
+      totalEmployees > 0
+        ? Math.round((present / totalEmployees) * 100)
+        : 0;
+
+    /* ================= BRANCH BREAKDOWN ================= */
+
+    const employeeMap = {};
+    branchEmployeeStats.forEach(b => {
+      employeeMap[b.branch_id] = b;
+    });
+
+    const salaryMap = {};
+    branchSalaryStats.forEach(b => {
+      salaryMap[b.branch_id] = b;
+    });
+
+    const branchBreakdown = branches.map(branch => {
+
+      const emp = employeeMap[branch.id] || {};
+      const sal = salaryMap[branch.id] || {};
+
+      const total = Number(emp.total || 0);
+      const paid = Number(sal.employees_paid || 0);
+
+      return {
+        branch_id: branch.id,
+        branch_name: branch.branch_name,
+        employees: {
+          total,
+          active: Number(emp.active || 0),
+          inactive: Number(emp.inactive || 0)
+        },
+        salary: {
+          employees_paid: paid,
+          employees_remaining: total - paid,
+          total_paid_amount: Number(sal.total_paid || 0),
+          total_paid_formatted:
+            `₹ ${Number(sal.total_paid || 0).toLocaleString("en-IN")}`
+        }
+      };
+    });
+
+    // console.timeEnd("DASHBOARD");
+
+    /* ================= RESPONSE (UNCHANGED STRUCTURE) ================= */
+
     res.json({
       success: true,
-      company,
+      company: {
+        id: company.id,
+        name: company.name,
+        logo_url: null
+      },
       logged_in: { role, user_id },
       period,
-
-      employees: {
-        company_total: {
-          total: employees.length,
-          active: employees.filter(e => e.employee_status === "ACTIVE").length,
-          inactive: employees.filter(e => e.employee_status === "INACTIVE").length
+      organization_summary: {
+        total_branches: Number(orgSummary.total_branches || 0),
+        total_departments: Number(orgSummary.total_departments || 0),
+        total_designations: Number(orgSummary.total_designations || 0),
+        total_hrs: Number(orgSummary.total_hrs || 0)
+      },
+      overview: {
+        employees: {
+          total: totalEmployees,
+          active: Number(employeeStats.active || 0),
+          inactive: Number(employeeStats.inactive || 0)
         },
-        branches: Object.values(branchMap).map(b => ({
-          branch_id: b.branch_id,
-          branch_name: b.branch_name,
-          total: b.total,
-          active: b.active,
-          inactive: b.inactive
-        }))
-      },
-
-      attendance: {
-        company_total: companyAttendance,
-        branches: attendanceBranches
-      },
-
-      leave_pending: {
-        company_total: Number(pending || 0)
-      },
-
-      salary: {
-        company_total: {
-          employees_paid: Number(salaryCompany?.employees_paid || 0),
-          total_salary: Number(salaryCompany?.total_salary || 0)
+        attendance: {
+          present,
+          absent,
+          unmarked,
+          present_percentage: presentPercentage
+        },
+        leave: {
+          today: Number(leaveStats.today || 0),
+          approval_pending: Number(leaveStats.approval_pending || 0)
+        },
+        salary: {
+          employees_paid: Number(salaryStats.employees_paid || 0),
+          employees_remaining:
+            totalEmployees - Number(salaryStats.employees_paid || 0),
+          total_paid_amount: Number(salaryStats.total_paid || 0),
+          total_paid_formatted:
+            `₹ ${Number(salaryStats.total_paid || 0)
+              .toLocaleString("en-IN")}`
         }
-      }
+      },
+      branch_breakdown: branchBreakdown
     });
 
   } catch (err) {

@@ -14,7 +14,7 @@ const router = express.Router();
 router.get("/public", verifyToken, listDepartmentsPublic);
 
 /* PROTECTED */
-
+router.use(verifyToken);
 router.use(allowRoles("COMPANY_ADMIN"));
 
 router.post("/", verifyToken, createDepartment);

@@ -9,7 +9,7 @@ import {
 import { verifyToken, requireRole } from "../../middlewares/auth.middleware.js";
 
 const router = express.Router();
-
+router.use(verifyToken);
 router.use(requireRole("COMPANY_ADMIN", "HR"));
 
 router.post("/branch-holidays",verifyToken, createBranchHolidays);

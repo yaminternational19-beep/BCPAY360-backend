@@ -13,12 +13,13 @@ const router = express.Router();
 
 /* PROTECTED ROUTES */
 
-router.use(allowRoles("COMPANY_ADMIN"));
+router.use(verifyToken); // ✅ FIRST
+router.use(allowRoles("COMPANY_ADMIN")); // ✅ SECOND
 
-router.post("/", verifyToken, createBranch);
-router.get("/", verifyToken, listBranches);
-router.put("/:id", verifyToken, updateBranch);
-router.patch("/:id/status", verifyToken, toggleBranchStatus);
-router.delete("/:id", verifyToken, deleteBranch);
+router.post("/", createBranch);
+router.get("/", listBranches);
+router.put("/:id", updateBranch);
+router.patch("/:id/status", toggleBranchStatus);
+router.delete("/:id", deleteBranch);
 
 export default router;

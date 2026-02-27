@@ -6,10 +6,10 @@ import { uploadProfilePhoto } from "../../middlewares/multerConfig.js";
 const router = express.Router();
 
 router.put(
-  "/edit-profile",
-  verifyEmployeeToken,
-  uploadProfilePhoto,
-  updateEmployeeProfile
+    "/edit-profile",
+    verifyEmployeeToken,
+    uploadProfilePhoto,
+    updateEmployeeProfile
 );
 
 export default router;

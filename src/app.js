@@ -4,60 +4,63 @@ import logger from "./utils/logger.js";
 
 const MODULE_NAME = "APP";
 
-/* ROUTES */
+/* ==========================================================================
+   ROUTE IMPORTS
+   ========================================================================== */
+
+/* --- ORGANIZATION & CORE --- */
 import superAdminRoutes from "./routes/organization/superadmin/superAdmin.routes.js";
 import companyRoutes from "./routes/organization/superadmin/company.routes.js";
 import companyAdminRoutes from "./routes/organization/superadmin/companyAdmin.routes.js";
 import hrRoutes from "./routes/organization/hr.routes.js";
 import hrPermissionRoutes from "./routes/organization/hrPermissions.routes.js";
-
 import branchRoutes from "./routes/organization/branch.routes.js";
 import departmentRoutes from "./routes/organization/department.routes.js";
 import designationRoutes from "./routes/organization/designation.routes.js";
 import employeeTypeRoutes from "./routes/organization/employeeType.routes.js";
 import shiftRoutes from "./routes/organization/shift.routes.js";
-
-import employeeRoutes from "./routes/admin/employee.routes.js";
-import employeeProfileRoutes from "./routes/admin/employee_profile.routes.js";
-import employeeDocumentRoutes from "./routes/admin/employee_document.routes.js";
-import employeeAuthRoutes from "./routes/employee/employeeAuth.routes.js";
-
-import dashboardRoutes from "./routes/admin/dashboard.routes.js";
-import attendanceRoutes from "./routes/employee/attendance.routes.js";
-
-import adminAttendanceRoutes from "./routes/admin/adminAttendance.routes.js";
-import employeeHomeRoutes from "./routes/employee/home.routes.js";
-import employeeProfile from "./routes/employee/profile.routes.js";
-import payrolldata from "./routes/employee/payRoll.routes.js";
 import empCode from "./routes/organization/empCode.routes.js";
+import uploadCompanyGovernmentForm from "./routes/organization/companyGovernmentForm.routes.js";
+
+/* --- ADMIN MODULE ROUTES --- */
+import employeeRoutes from "./routes/admin/employee.routes.js";
+import adminAttendanceRoutes from "./routes/admin/adminAttendance.routes.js";
 import leaveMasterRoutes from "./routes/admin/leaveMaster.routes.js";
-import employeeLeaveRoutes from "./routes/employee/leave.routes.js";
 import leaveApprovalRoutes from "./routes/admin/leaveApproval.routes.js";
 import payrollRoutes from "./routes/admin/payroll.routes.js";
 import generatedocs from "./routes/admin/generateDocs.routes.js";
 import adminFormsRoutes from "./routes/admin/adminForms.routes.js";
-import contentPage from "./routes/settings/companyPages.route.js";
 import holidays from "./routes/admin/holidays.route.js";
+import dashboardRoutes from "./routes/admin/dashboard.routes.js";
+
+/* --- EMPLOYEE MODULE ROUTES --- */
+import employeeAuthRoutes from "./routes/employee/employeeAuth.routes.js";
+import attendanceRoutes from "./routes/employee/attendance.routes.js";
+import employeeHomeRoutes from "./routes/employee/home.routes.js";
+import employeeProfile from "./routes/employee/profile.routes.js";
+import payrolldata from "./routes/employee/payRoll.routes.js";
+import employeeLeaveRoutes from "./routes/employee/leave.routes.js";
+import empholidays from "./routes/employee/holiday.route.js";
+import suppoptreq from "./routes/employee/support.route.js";
+import editEmployeeProfile from "./routes/employee/employee.routes.js";
+import getFaqs from "./routes/employee/faq.routes.js";
+import deactivateAccount from "./routes/employee/deactivateAccount.routes.js";
+import notificationRoutes from "./routes/employee/notification.routes.js";
+
+/* --- SETTINGS & PUBLIC ROUTES --- */
+import contentPage from "./routes/settings/companyPages.route.js";
 import helpsupport from "./routes/settings/support.routes.js";
 import FandQ from "./routes/settings/companyFaq.routes.js";
 import broadcastRoutes from "./routes/settings/broadcast.routes.js";
-
-import empholidays from "./routes/employee/holiday.route.js";
-import suppoptreq from "./routes/employee/support.route.js";
-
-import editEmployeeProfile from "./routes/employee/employee.routes.js";
-
-
-import  getFaqs  from "./routes/employee/faq.routes.js";
-import deactivateAccount from "./routes/employee/deactivateAccount.routes.js";
-import notificationRoutes from "./routes/employee/notification.routes.js";
+import publicContentRoutes from "./routes/public/content.routes.js";
 
 const app = express();
 app.set("trust proxy", 1);
 
-/* ============================
+/* ==========================================================================
    MIDDLEWARES
-============================ */
+   ========================================================================== */
+
 const allowedOrigins = [
   // Admin dev
   "http://localhost:5173",
@@ -157,83 +160,54 @@ app.use((req, res, next) => {
 // Files are now stored in AWS S3 instead of local filesystem
 // app.use("/uploads", express.static("uploads")); // REMOVED
 
-/* ============================
-   ROUTES
-============================ */
+/* ==========================================================================
+   ROUTE HANDLERS
+   ========================================================================== */
 
-/* SUPER ADMIN */
+/* --- CORE & ORGANIZATION --- */
 app.use("/api/super-admin", superAdminRoutes);
-
-/* COMPANY + COMPANY ADMIN */
 app.use("/api/companies", companyRoutes);
 app.use("/api/company-admins", companyAdminRoutes);
-
-/* HR MODULE */
 app.use("/api/hr", hrRoutes);
 app.use("/api/hr-permissions", hrPermissionRoutes);
-
-/* ORGANIZATION MODULE */
 app.use("/api/branches", branchRoutes);
 app.use("/api/departments", departmentRoutes);
 app.use("/api/designations", designationRoutes);
 app.use("/api/employee-types", employeeTypeRoutes);
 app.use("/api/shifts", shiftRoutes);
 
-/* EMPLOYEE MODULE */
+/* --- ADMIN MODULE --- */
 app.use("/api/employees", employeeRoutes);
-app.use("/api/employee-profiles", employeeProfileRoutes);   // ✅ FIX
-app.use("/api/employee-documents", employeeDocumentRoutes);
-app.use("/api/employee/auth", employeeAuthRoutes);
-
-/* DASHBOARD (KEEP LAST) */
-app.use("/api/dashboard", dashboardRoutes);
-
-app.use("/api/employee/attendance", attendanceRoutes);
-
-
 app.use("/api/admin/attendance", adminAttendanceRoutes);
 app.use("/api/admin/leave-master", leaveMasterRoutes);
 app.use("/api/admin/leave-approval", leaveApprovalRoutes);
 app.use("/api/admin/payroll", payrollRoutes);
 app.use("/api/admin/employee", empCode);
-
 app.use("/api/admin/generate-docs", generatedocs);
 app.use("/api/admin/forms", adminFormsRoutes);
 app.use("/api/admin/holidays", holidays);
+app.use("/api/admin/government-forms", uploadCompanyGovernmentForm);
+app.use("/api/admin/content", contentPage);
+app.use("/api/admin", helpsupport);
+app.use("/api/admin", FandQ);
+app.use("/api/admin", broadcastRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
-
-
+/* --- EMPLOYEE MODULE --- */
+app.use("/api/employee/auth", employeeAuthRoutes);
+app.use("/api/employee/attendance", attendanceRoutes);
 app.use("/api/employee", employeeHomeRoutes);
 app.use("/api/employee", employeeProfile);
-
-
 app.use("/api/employee", employeeLeaveRoutes);
 app.use("/api/employee", payrolldata);
 app.use("/api/employee", empholidays);
 app.use("/api/employee", suppoptreq);
 app.use("/api/employee", editEmployeeProfile);
-
-
-import uploadCompanyGovernmentForm from "./routes/organization/companyGovernmentForm.routes.js";
-
-app.use("/api/admin/government-forms", uploadCompanyGovernmentForm);
-
-
-
-app.use("/api/admin/content", contentPage);
-app.use("/api/admin", helpsupport)
-app.use("/api/admin", FandQ);
-app.use("/api/admin", broadcastRoutes);
-
-
 app.use("/api/employee", getFaqs);
-
 app.use("/api/employee", deactivateAccount);
 app.use("/api/employee/notifications", notificationRoutes);
 
-
-import publicContentRoutes from "./routes/public/content.routes.js";
-
+/* --- PUBLIC --- */
 app.use("/api/public", publicContentRoutes);
 
 export default app;

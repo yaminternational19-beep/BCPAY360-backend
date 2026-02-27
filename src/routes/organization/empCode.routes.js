@@ -8,7 +8,7 @@ import { allowRoles, verifyToken } from "../../middlewares/auth.middleware.js";
 const router = express.Router();
 
 /* PROTECTED */
-
+router.use(verifyToken);
 router.use(allowRoles("COMPANY_ADMIN"));
 
 router.post("/code", verifyToken, generateEmployeeCode);
