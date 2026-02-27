@@ -2,14 +2,52 @@ import db from "../../models/db.js";
 import dayjs from "dayjs";
 // src/services/payroll/payroll.service.js
 
-export const getEmployeesForPayroll = async (companyId, month, year) => {
+export const getEmployeesForPayroll = async (
+  companyId,
+  month,
+  year,
+  page = 1,
+  limit = 10
+) => {
   const startDate = dayjs(`${year}-${month}-01`).startOf("month").format("YYYY-MM-DD");
   const endDate = dayjs(startDate).endOf("month").format("YYYY-MM-DD");
   const daysInMonth = dayjs(startDate).daysInMonth();
+  const offset = (page - 1) * limit;
 
-  /* ===============================
-     1️⃣ ACTIVE EMPLOYEES
-     =============================== */
+  /* ===================================
+     1️⃣ TOTAL ACTIVE EMPLOYEES COUNT
+  =================================== */
+
+  const [[{ total }]] = await db.query(`
+    SELECT COUNT(*) AS total
+    FROM employees
+    WHERE company_id = ?
+      AND employee_status = 'ACTIVE'
+      AND joining_date <= ?
+  `, [companyId, endDate]);
+
+  if (!total) {
+    return {
+      summary: {
+        total: 0,
+        paid: 0,
+        pending: 0,
+        not_generated: 0
+      },
+      meta: {
+        total: 0,
+        page,
+        limit,
+        totalPages: 0,
+        count: 0
+      },
+      employees: []
+    };
+  }
+
+  /* ===================================
+     2️⃣ PAGINATED ACTIVE EMPLOYEES
+  =================================== */
 
   const [employees] = await db.query(`
     SELECT
@@ -20,14 +58,11 @@ export const getEmployeesForPayroll = async (companyId, month, year) => {
       e.joining_date,
       e.salary AS base_salary,
       e.branch_id,
-       e.department_id,
-
+      e.department_id,
       d.department_name,
-
       ep.bank_name,
       ep.account_number,
       ep.ifsc_code,
-
       COALESCE(uan.uan_number, '-') AS uan_number
     FROM employees e
     JOIN departments d ON d.id = e.department_id
@@ -42,16 +77,35 @@ export const getEmployeesForPayroll = async (companyId, month, year) => {
       AND e.employee_status = 'ACTIVE'
       AND e.joining_date <= ?
     ORDER BY e.employee_code
-  `, [companyId, endDate]);
-
-  if (!employees.length) return [];
+    LIMIT ? OFFSET ?
+  `, [companyId, endDate, limit, offset]);
 
   const empIds = employees.map(e => e.employee_id);
+
+  if (!empIds.length) {
+    return {
+      summary: {
+        total,
+        paid: 0,
+        pending: 0,
+        not_generated: total
+      },
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        count: 0
+      },
+      employees: []
+    };
+  }
+
   const placeholders = empIds.map(() => "?").join(",");
 
-  /* ===============================
-     2️⃣ ATTENDANCE (MONTH ONLY)
-     =============================== */
+  /* ===================================
+     3️⃣ ATTENDANCE
+  =================================== */
 
   const [attendance] = await db.query(`
     SELECT
@@ -72,9 +126,9 @@ export const getEmployeesForPayroll = async (companyId, month, year) => {
     GROUP BY employee_id
   `, [companyId, startDate, endDate, ...empIds]);
 
-  /* ===============================
-     3️⃣ PAID LEAVES
-     =============================== */
+  /* ===================================
+     4️⃣ PAID LEAVES
+  =================================== */
 
   const [leaves] = await db.query(`
     SELECT
@@ -91,11 +145,11 @@ export const getEmployeesForPayroll = async (companyId, month, year) => {
     GROUP BY elr.employee_id
   `, [companyId, endDate, startDate, ...empIds]);
 
-  /* ===============================
-     4️⃣ PAYROLL STATUS (MONTH)
-     =============================== */
+  /* ===================================
+     5️⃣ PAYROLL STATUS (GLOBAL + PAGE)
+  =================================== */
 
-  const [payroll] = await db.query(`
+  const [payrollAll] = await db.query(`
     SELECT
       pee.employee_id,
       pee.payment_status
@@ -106,18 +160,22 @@ export const getEmployeesForPayroll = async (companyId, month, year) => {
       AND pb.pay_year = ?
   `, [companyId, month, year]);
 
-  /* ===============================
-     5️⃣ MAP & MERGE
-     =============================== */
+  const payAllMap = toMap(payrollAll);
+
+  const summary = {
+    total,
+    paid: payrollAll.filter(p => p.payment_status === "PAID").length,
+    pending: payrollAll.filter(p => p.payment_status === "PENDING").length,
+    not_generated: total - payrollAll.length
+  };
 
   const attMap = toMap(attendance);
   const leaveMap = toMap(leaves);
-  const payMap = toMap(payroll);
 
-  return employees.map(emp => {
+  const paginatedEmployees = employees.map(emp => {
     const att = attMap[emp.employee_id] || {};
     const lv = leaveMap[emp.employee_id] || {};
-    const pay = payMap[emp.employee_id];
+    const pay = payAllMap[emp.employee_id];
 
     const present = Number(att.present_days || 0);
     const leave = Number(lv.leave_days || 0);
@@ -129,29 +187,34 @@ export const getEmployeesForPayroll = async (companyId, month, year) => {
       full_name: emp.full_name,
       phone: emp.phone,
       branch_id: emp.branch_id,
-  department_id: emp.department_id,
-  department_name: emp.department_name,
-
+      department_id: emp.department_id,
+      department_name: emp.department_name,
       uan_number: emp.uan_number,
       base_salary: emp.base_salary,
-
       working_days: daysInMonth,
       present_days: present,
       leave_days: leave,
       late_days: Number(att.late_days || 0),
       ot_hours: Math.floor((att.ot_minutes || 0) / 60),
-
       absent_days: Math.max(daysInMonth - payable, 0),
-
       bank_name: emp.bank_name || "NA",
       account_number: emp.account_number || "NA",
       ifsc_code: emp.ifsc_code || "NA",
-
-      payment_status: pay
-        ? pay.payment_status
-        : "NOT_GENERATED"
+      payment_status: pay ? pay.payment_status : "NOT_GENERATED"
     };
   });
+
+  return {
+    summary,
+    meta: {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      count: paginatedEmployees.length
+    },
+    employees: paginatedEmployees
+  };
 };
 
 

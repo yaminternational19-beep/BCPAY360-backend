@@ -16,28 +16,23 @@ import { TABLES } from "../../utils/tableNames.js";
 
 export const getPayrollEmployees = async (req, res) => {
   try {
-    const { month, year } = req.query;
+    const { month, year, page = 1, limit = 10 } = req.query;
     const companyId = req.user.company_id;
 
     if (!month || !year) {
       return res.status(400).json({ message: "Month and Year required" });
     }
 
-    const employees = await PayrollService.getEmployeesForPayroll(
+    const result = await PayrollService.getEmployeesForPayroll(
       companyId,
       Number(month),
-      Number(year)
+      Number(year),
+      Number(page),
+      Number(limit)
     );
 
-    res.json({
-      summary: {
-        total: employees.length,
-        paid: employees.filter(e => e.payment_status === "PAID").length,
-        pending: employees.filter(e => e.payment_status === "PENDING").length,
-        not_generated: employees.filter(e => e.payment_status === "NOT_GENERATED").length
-      },
-      employees
-    });
+    res.json(result);
+
   } catch (err) {
     console.error("PAYROLL EMP ERROR:", err);
     res.status(500).json({ message: "Failed to fetch payroll employees" });
@@ -187,13 +182,17 @@ export const generatePayroll = async (req, res) => {
 
 export const getPayrollSlipPreview = async (req, res) => {
   const companyId = req.user.company_id;
-  const { pay_month, pay_year } = req.query;
+  const { pay_month, pay_year, page = 1, limit = 10 } = req.query;
 
   if (!pay_month || !pay_year) {
     return res.status(400).json({
       message: "pay_month and pay_year required"
     });
   }
+
+  const parsedPage = parseInt(page);
+  const parsedLimit = parseInt(limit);
+  const offset = (parsedPage - 1) * parsedLimit;
 
   try {
     /* 1️⃣ Fetch payroll batch */
@@ -212,11 +211,28 @@ export const getPayrollSlipPreview = async (req, res) => {
       return res.json({
         batch: null,
         employees: [],
+        meta: {
+          total: 0,
+          page: parsedPage,
+          limit: parsedLimit,
+          totalPages: 0
+        },
         message: "No payroll generated yet"
       });
     }
 
-    /* 2️⃣ Fetch ONLY PENDING payroll entries */
+    /* 2️⃣ Get total count */
+    const [[{ total }]] = await db.query(
+      `
+      SELECT COUNT(*) AS total
+      FROM payroll_employee_entries
+      WHERE payroll_batch_id = ?
+        AND payment_status = 'PENDING'
+      `,
+      [batch.id]
+    );
+
+    /* 3️⃣ Fetch paginated employees */
     const [employees] = await db.query(
       `
       SELECT
@@ -253,12 +269,20 @@ export const getPayrollSlipPreview = async (req, res) => {
       WHERE pee.payroll_batch_id = ?
         AND pee.payment_status = 'PENDING'
       ORDER BY e.employee_code
+      LIMIT ? OFFSET ?
       `,
-      [batch.id]
+      [batch.id, parsedLimit, offset]
     );
 
-    res.json({
+    return res.json({
       batch,
+      meta: {
+        total,
+        page: parsedPage,
+        limit: parsedLimit,
+        totalPages: Math.ceil(total / parsedLimit),
+        count: employees.length
+      },
       employees
     });
 
@@ -269,14 +293,6 @@ export const getPayrollSlipPreview = async (req, res) => {
     });
   }
 };
-
-
-
-
-
-
-
-
 
 
 export const confirmPayrollBatch = async (req, res) => {
