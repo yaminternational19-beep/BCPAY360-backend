@@ -1,5 +1,5 @@
 import db from "../../models/db.js";
-
+import { sendNotification } from "../../utils/oneSignal.js";
 /* =========================================================
    CONSTANTS
 ========================================================= */
@@ -148,7 +148,7 @@ export const createPage = async (req, res) => {
       });
     }
 
-    await db.query(
+    const [result] = await db.query(
       `INSERT INTO company_pages
        (company_id, slug, title, content, content_type, is_system, is_active, created_by)
        VALUES (?, ?, ?, ?, 'MARKDOWN', 0, 1, ?)`,
@@ -161,11 +161,37 @@ export const createPage = async (req, res) => {
       ]
     );
 
+    const pageId = result.insertId;
+
+    /* ===============================
+       🔔 Notify All Employees
+    =============================== */
+
+    const [employees] = await db.query(
+      `SELECT id FROM employees WHERE company_id = ?`,
+      [company_id]
+    );
+
+    for (const emp of employees) {
+      await sendNotification({
+        company_id,
+        user_type: "EMPLOYEE",
+        user_id: emp.id,
+        title: `New Page: ${title}`,
+        message: `A new page "${title}" has been created. Please review the information.`,
+        notification_type: "PAGE_CREATED",
+        reference_id: pageId,
+        reference_type: "COMPANY_PAGE",
+        action_url: `/employee/pages/${pageId}`
+      });
+    }
+
     res.status(201).json({
       success: true,
       message: "Page created successfully",
       slug
     });
+
   } catch (error) {
     console.error("createPage error:", error);
     res.status(500).json({
@@ -178,6 +204,46 @@ export const createPage = async (req, res) => {
 /* =========================================================
    UPDATE PAGE CONTENT
 ========================================================= */
+// export const updatePage = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const { title, content, content_type = "MARKDOWN" } = req.body;
+//     const { company_id, id: user_id } = req.user;
+
+//     const [[page]] = await db.query(
+//       `SELECT is_system FROM company_pages WHERE id = ? AND company_id = ?`,
+//       [id, company_id]
+//     );
+
+//     if (!page) {
+//       return res.status(404).json({
+//         success: false, 
+//         message: "Page not found"
+//       });
+//     }
+
+//     await db.query(
+//       `UPDATE company_pages
+//        SET title = ?, content = ?, content_type = ?, updated_by = ?
+//        WHERE id = ?`,
+//       [title, content, content_type, user_id, id]
+//     );
+
+//     res.json({
+//       success: true,
+//       message: "Page updated successfully"
+//     });
+//   } catch (error) {
+//     console.error("updatePage error:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to update page"
+//     });
+//   }
+// };
+
+
+
 export const updatePage = async (req, res) => {
   try {
     const { id } = req.params;
@@ -185,7 +251,9 @@ export const updatePage = async (req, res) => {
     const { company_id, id: user_id } = req.user;
 
     const [[page]] = await db.query(
-      `SELECT is_system FROM company_pages WHERE id = ? AND company_id = ?`,
+      `SELECT is_system 
+       FROM company_pages 
+       WHERE id = ? AND company_id = ?`,
       [id, company_id]
     );
 
@@ -203,10 +271,36 @@ export const updatePage = async (req, res) => {
       [title, content, content_type, user_id, id]
     );
 
+    /* =====================================
+       🔔 SEND STATIC NOTIFICATION (NEW)
+    ===================================== */
+
+    const [employees] = await db.query(
+      `SELECT id FROM employees WHERE company_id = ?`,
+      [company_id]
+    );
+
+    for (const emp of employees) {
+      await sendNotification({
+  company_id,
+  user_type: "EMPLOYEE",
+  user_id: emp.id,
+  title: `Important Update`,
+  message: `Important changes have been made to the "${title}" page. Please review the updated content.`,
+  notification_type: "PAGE_UPDATE",
+  reference_id: id,
+  reference_type: "COMPANY_PAGE",
+  action_url: `/employee/pages/${id}`
+});
+    }
+
+    /* ===================================== */
+
     res.json({
       success: true,
       message: "Page updated successfully"
     });
+
   } catch (error) {
     console.error("updatePage error:", error);
     res.status(500).json({
@@ -215,7 +309,6 @@ export const updatePage = async (req, res) => {
     });
   }
 };
-
 export const deletePage = async (req, res) => {
   try {
     const { id } = req.params;

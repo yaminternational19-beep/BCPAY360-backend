@@ -4,13 +4,13 @@
 
 import db from "../../models/db.js";
 import * as PayrollService from "../../services/payroll/payroll.service.js";
-
+import dayjs from "dayjs";
 import { processEmployeePayslip } from "../../services/payroll/payslip.service.js";
 import { sendSalaryEmail } from "../../mail/index.js";
 
 import { calculateSalary } from "../../services/payroll/salaryCalculator.js";
 import { TABLES } from "../../utils/tableNames.js";
-
+import { sendNotification } from "../../utils/oneSignal.js";
 
 // src/controllers/admin/payroll.controller.js
 
@@ -295,12 +295,16 @@ export const getPayrollSlipPreview = async (req, res) => {
 };
 
 
+
+
 export const confirmPayrollBatch = async (req, res) => {
   const { payMonth, payYear, employeeIds = [], action } = req.body;
   const companyId = req.user.company_id;
 
   if (action !== "CONFIRM") {
-    return res.status(400).json({ message: "Invalid action. Use CONFIRM." });
+    return res.status(400).json({
+      message: "Invalid action. Use CONFIRM."
+    });
   }
 
   const conn = await db.getConnection();
@@ -308,7 +312,9 @@ export const confirmPayrollBatch = async (req, res) => {
   try {
     await conn.beginTransaction();
 
-    /* 1️⃣ Fetch payroll batch (NO STATUS) */
+    /* =========================================
+       1️⃣ Fetch Payroll Batch
+    ========================================= */
     const [[batch]] = await conn.query(
       `
       SELECT id
@@ -325,11 +331,16 @@ export const confirmPayrollBatch = async (req, res) => {
       throw new Error("Payroll batch not found");
     }
 
-    /* 2️⃣ Fetch PENDING employees
-          If employeeIds empty → process ALL pending */
+    /* =========================================
+       2️⃣ Fetch Pending Employees
+    ========================================= */
     const [entries] = await conn.query(
       `
-      SELECT pee.id, e.email, e.full_name
+      SELECT 
+        pee.id,
+        pee.employee_id,
+        e.email,
+        e.full_name
       FROM payroll_employee_entries pee
       JOIN employees e ON e.id = pee.employee_id
       WHERE pee.payroll_batch_id = ?
@@ -342,13 +353,16 @@ export const confirmPayrollBatch = async (req, res) => {
     );
 
     if (entries.length === 0) {
+      await conn.rollback();
       return res.json({
         message: "No pending salaries to process",
         processed: 0
       });
     }
 
-    /* 3️⃣ Mark employees as PAID */
+    /* =========================================
+       3️⃣ Mark As SUCCESS
+    ========================================= */
     for (const row of entries) {
       await conn.query(
         `
@@ -359,8 +373,21 @@ export const confirmPayrollBatch = async (req, res) => {
         `,
         [row.id]
       );
+    }
 
-      // async email (non-blocking)
+    await conn.commit();
+
+    /* =========================================
+       4️⃣ Send Emails + Notifications (AFTER COMMIT)
+    ========================================= */
+
+    const monthName = dayjs(
+      `${payYear}-${payMonth}-01`
+    ).format("MMMM YYYY");
+
+    for (const row of entries) {
+
+      // 📧 Salary Email (non-blocking)
       setImmediate(() => {
         sendSalaryEmail({
           to: row.email,
@@ -369,23 +396,34 @@ export const confirmPayrollBatch = async (req, res) => {
           year: payYear
         });
       });
+
+      // 🔔 In-App + Push Notification
+      await sendNotification({
+        company_id: companyId,
+        user_type: "EMPLOYEE",
+        user_id: row.employee_id,
+        title: `Salary Credited – ${monthName}`,
+        message: `Your salary for ${monthName} has been successfully credited.`,
+        notification_type: "PAYROLL",
+        reference_type: "PAYROLL_BATCH",
+        reference_id: batch.id,
+        action_url: `/employee/payroll/${payYear}/${payMonth}`
+      });
     }
 
-    await conn.commit();
-
-    res.json({
+    return res.json({
       message: "Payroll processed successfully",
       processed: entries.length
     });
 
   } catch (err) {
     await conn.rollback();
-    res.status(400).json({ message: err.message });
+    return res.status(400).json({
+      message: err.message
+    });
   } finally {
     conn.release();
   }
 };
-
-
 
 

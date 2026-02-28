@@ -1,5 +1,5 @@
 import db from "../../models/db.js";
-
+import { sendNotification } from "../../utils/oneSignal.js";
 /* =========================================================
    GET ALL SUPPORT TICKETS (COMPANY ADMIN / HR)
    Filters: branch_id, status, search
@@ -8,6 +8,11 @@ export const getAllSupportTickets = async (req, res) => {
   try {
     const { company_id } = req.user;
     const { branch_id, status, search } = req.query;
+
+    // Pagination params
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
 
     let conditions = [`company_id = ?`];
     let params = [company_id];
@@ -29,6 +34,20 @@ export const getAllSupportTickets = async (req, res) => {
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
 
+    const whereClause = conditions.join(" AND ");
+
+    // 1️⃣ Get total count
+    const [[countResult]] = await db.query(
+      `SELECT COUNT(*) as total
+       FROM company_support_tickets
+       WHERE ${whereClause}`,
+      params
+    );
+
+    const total = countResult.total;
+    const totalPages = Math.ceil(total / limit);
+
+    // 2️⃣ Get paginated data
     const [tickets] = await db.query(
       `SELECT
          id,
@@ -39,15 +58,23 @@ export const getAllSupportTickets = async (req, res) => {
          status,
          created_at
        FROM company_support_tickets
-       WHERE ${conditions.join(" AND ")}
-       ORDER BY created_at DESC`,
-      params
+       WHERE ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT ? OFFSET ?`,
+      [...params, limit, offset]
     );
 
     res.json({
       success: true,
-      data: tickets
+      data: tickets,
+      pagination: {
+        total,
+        totalPages,
+        currentPage: page,
+        limit
+      }
     });
+
   } catch (error) {
     console.error("getAllSupportTickets error:", error);
     res.status(500).json({
@@ -95,6 +122,66 @@ export const getSupportTicketById = async (req, res) => {
 /* =========================================================
    RESPOND TO SUPPORT TICKET (AUTO CLOSE)
 ========================================================= */
+// export const respondToSupportTicket = async (req, res) => {
+//   try {
+//     const { company_id, role, id: responder_id } = req.user;
+//     const { id } = req.params;
+//     const { response } = req.body;
+
+//     if (!response || !response.trim()) {
+//       return res.status(422).json({
+//         success: false,
+//         message: "Response is required"
+//       });
+//     }
+
+//     const [[ticket]] = await db.query(
+//       `SELECT status
+//        FROM company_support_tickets
+//        WHERE id = ? AND company_id = ?`,
+//       [id, company_id]
+//     );
+
+//     if (!ticket) {
+//       return res.status(404).json({
+//         success: false,
+//         message: "Support ticket not found"
+//       });
+//     }
+
+//     if (ticket.status === "CLOSED") {
+//       return res.status(409).json({
+//         success: false,
+//         message: "Ticket is already closed"
+//       });
+//     }
+
+//     await db.query(
+//       `UPDATE company_support_tickets
+//        SET
+//          response = ?,
+//          responded_by_role = ?,
+//          responded_by_id = ?,
+//          responded_at = NOW(),
+//          status = 'CLOSED'
+//        WHERE id = ?`,
+//       [response, role, responder_id, id]
+//     );
+
+//     res.json({
+//       success: true,
+//       message: "Response sent and ticket closed"
+//     });
+//   } catch (error) {
+//     console.error("respondToSupportTicket error:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to respond to support ticket"
+//     });
+//   }
+// };
+
+
 export const respondToSupportTicket = async (req, res) => {
   try {
     const { company_id, role, id: responder_id } = req.user;
@@ -109,7 +196,7 @@ export const respondToSupportTicket = async (req, res) => {
     }
 
     const [[ticket]] = await db.query(
-      `SELECT status
+      `SELECT status, employee_id
        FROM company_support_tickets
        WHERE id = ? AND company_id = ?`,
       [id, company_id]
@@ -141,10 +228,30 @@ export const respondToSupportTicket = async (req, res) => {
       [response, role, responder_id, id]
     );
 
+    // 🔔 Send Notification to Employee
+    // 🔔 Send Notification to Employee
+  const shortResponse =
+  response.length > 180
+    ? response.substring(0, 180) + "..."
+    : response;
+
+await sendNotification({
+  company_id,
+  user_type: "EMPLOYEE",
+  user_id: ticket.employee_id,
+  title: ticket.category || "Support Ticket",
+  message: shortResponse,
+  notification_type: "SUPPORT_TICKET",
+  reference_id: id,
+  reference_type: "SUPPORT_TICKET",
+  action_url: `/employee/help-support/${id}`
+});
+
     res.json({
       success: true,
       message: "Response sent and ticket closed"
     });
+
   } catch (error) {
     console.error("respondToSupportTicket error:", error);
     res.status(500).json({

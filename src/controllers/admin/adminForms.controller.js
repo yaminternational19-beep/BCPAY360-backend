@@ -8,8 +8,9 @@ import {
 } from "../../utils/s3Upload.util.js";
 import { S3_BUCKET_NAME } from "../../config/s3.config.js";
 import logger from "../../utils/logger.js";
-
+import dayjs from "dayjs";
 const MODULE_NAME = "ADMIN_FORMS_CONTROLLER";
+import { sendNotification } from "../../utils/oneSignal.js";
 
 
 
@@ -351,6 +352,30 @@ export const uploadEmployeeForm = async (req, res) => {
 
     await db.query(insertSql, insertParams);
 
+    /* =====================
+   🔔 SEND NOTIFICATION
+===================== */
+
+let periodLabel = "";
+
+if (periodType === "FY") {
+  periodLabel = `Financial Year ${financialYear}`;
+} else {
+  const monthName = dayjs(`${year}-${month}-01`).format("MMMM YYYY");
+  periodLabel = monthName;
+}
+
+await sendNotification({
+  company_id: targetEmp.company_id,
+  user_type: "EMPLOYEE",
+  user_id: employeeId,
+  title: `${formCode.toUpperCase()} Form Uploaded`,
+  message: `${formCode.toUpperCase()} document for ${periodLabel} has been uploaded and is now available for review.`,
+  notification_type: "FORM_UPLOAD",
+  reference_type: "EMPLOYEE_FORM",
+  action_url: `/employee/forms`
+});
+
     return res.status(201).json({
       success: true,
       message: "Form uploaded successfully"
@@ -471,7 +496,6 @@ export const replaceEmployeeForm = async (req, res) => {
       SET
         storage_object_key = ?,
         storage_bucket = ?,
-        updated_at = CURRENT_TIMESTAMP,
         uploaded_by_role = ?,
         uploaded_by_id = ?
       WHERE id = ?
@@ -484,6 +508,29 @@ export const replaceEmployeeForm = async (req, res) => {
         existing.id
       ]
     );
+    /* =====================
+   🔔 SEND NOTIFICATION
+===================== */
+
+let periodLabel = "";
+
+if (periodType === "FY") {
+  periodLabel = `Financial Year ${financialYear}`;
+} else {
+  const monthName = dayjs(`${year}-${month}-01`).format("MMMM YYYY");
+  periodLabel = monthName;
+}
+
+await sendNotification({
+  company_id: targetEmp.company_id,
+  user_type: "EMPLOYEE",
+  user_id: employeeId,
+  title: `${formCode.toUpperCase()} Form Updated`,
+  message: `${formCode.toUpperCase()} document for ${periodLabel} has been updated. Please review the latest version.`,
+  notification_type: "FORM_UPDATED",
+  reference_type: "EMPLOYEE_FORM",
+  action_url: `/employee/forms`
+});
 
     return res.json({
       success: true,

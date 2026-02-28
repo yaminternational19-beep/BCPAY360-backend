@@ -1,5 +1,6 @@
 import db from "../../models/db.js";
 import logger from "../../utils/logger.js";
+import { sendNotification } from "../../utils/oneSignal.js";
 
 const MODULE_NAME = "GENERATE_DOCS_CONTROLLER";
 
