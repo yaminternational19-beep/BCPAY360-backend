@@ -16,6 +16,7 @@ import {
   activateEmployeeService
 } from "../../services/employee.service.js";
 import logger from "../../utils/logger.js";
+import { sendNotification } from "../../services/notification.service.js";
 
 const MODULE_NAME = "EMPLOYEE_CONTROLLER";
 
@@ -308,76 +309,138 @@ export const update_employee = async (req, res) => {
   }
 
   try {
-    // Fetch current employee details for S3 path construction
-    const [currentEmpRows] = await db.query(
-      `SELECT branch_id, employee_code FROM ${TABLES.EMPLOYEES} WHERE id = ? AND company_id = ?`,
-      [employeeId, company_id]
-    );
 
-    if (!currentEmpRows.length) {
-      return res.status(404).json({ message: "Employee not found or access denied" });
-    }
-    const currentEmp = currentEmpRows[0];
+  // Fetch employee
+  const [currentEmpRows] = await db.query(
+    `SELECT branch_id, employee_code FROM ${TABLES.EMPLOYEES} WHERE id = ? AND company_id = ?`,
+    [employeeId, company_id]
+  );
 
-    // Use incoming form data if available, otherwise fallback to current DB values
-    const targetBranchId = employeeForm?.branch_id || currentEmp.branch_id;
-    const targetEmployeeCode = employeeForm?.employee_code || currentEmp.employee_code;
+  if (!currentEmpRows.length) {
+    return res.status(404).json({ message: "Employee not found or access denied" });
+  }
 
-    const context = {
-      companyId: company_id,
-      branchId: targetBranchId,
-      employeeCode: targetEmployeeCode
-    };
+  const currentEmp = currentEmpRows[0];
 
-    const uploadedFiles = {};
-    const filesArray = req.files || [];
+  const targetBranchId = employeeForm?.branch_id || currentEmp.branch_id;
+  const targetEmployeeCode = employeeForm?.employee_code || currentEmp.employee_code;
 
-    for (const file of filesArray) {
-      const fullKey = generateEmployeeS3Key(context, file);
-      const uploadResult = await uploadToS3(file.buffer, fullKey, file.mimetype);
+  const context = {
+    companyId: company_id,
+    branchId: targetBranchId,
+    employeeCode: targetEmployeeCode
+  };
 
-      const fileEntry = {
-        url: uploadResult.url,
-        key: uploadResult.key,
-        originalname: file.originalname,
-        mimetype: file.mimetype,
-        fieldname: file.fieldname
-      };
+  const uploadedFiles = {};
+  const filesArray = req.files || [];
 
-      if (!uploadedFiles[file.fieldname]) {
-        uploadedFiles[file.fieldname] = [];
-      }
-      uploadedFiles[file.fieldname].push(fileEntry);
+  for (const file of filesArray) {
+    const fullKey = generateEmployeeS3Key(context, file);
+    const uploadResult = await uploadToS3(file.buffer, fullKey, file.mimetype);
+
+    if (!uploadedFiles[file.fieldname]) {
+      uploadedFiles[file.fieldname] = [];
     }
 
-    const updated = await updateEmployeeService(employeeId, company_id, {
+    uploadedFiles[file.fieldname].push({
+      url: uploadResult.url,
+      key: uploadResult.key,
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      fieldname: file.fieldname
+    });
+  }
+
+  /* ===============================
+     Detect Changes
+  =============================== */
+
+  const changes = [];
+
+  if (employeeForm && Object.keys(employeeForm).length) {
+    changes.push("Basic details updated");
+  }
+
+  if (profileForm && Object.keys(profileForm).length) {
+    changes.push("Profile information updated");
+  }
+
+  const newDocs = Object.keys(uploadedFiles || {}).filter(
+    key => key !== "profile_photo"
+  );
+
+  if (newDocs.length) {
+    changes.push(`New documents added (${newDocs.join(", ")})`);
+  }
+
+  if (employeeForm?.password) {
+    changes.push("Password changed");
+  }
+
+  const changeSummary =
+    changes.length > 0
+      ? `The following changes were made: ${changes.join(", ")}.`
+      : "Your profile information was updated.";
+
+  /* ===============================
+     Update Employee
+  =============================== */
+
+  const updated = await updateEmployeeService(
+    employeeId,
+    company_id,
+    {
       employeeForm,
       profileForm: { ...profileForm, ...uploadedFiles },
       documentsForm: { ...documentsForm, files: uploadedFiles }
-    }, req.user);
+    },
+    req.user
+  );
 
-    if (!updated) {
-      return res.status(404).json({
-        error_code: "NOT_FOUND",
-        reason: "Employee not found or access denied",
-        failed_stage: 'DATABASE_UPDATE'
-      });
-    }
-
-    res.json({
-      message: "Employee updated successfully",
-      updated_documents: Object.keys(uploadedFiles).filter(k => k !== 'profile_photo')
-    });
-  } catch (err) {
-    logger.error(MODULE_NAME, "Failed to update employee", err);
-    res.status(500).json({
-      error_code: "EMPLOYEE_UPDATE_FAILED",
-      reason: err.message || "An internal error occurred",
+  if (!updated) {
+    return res.status(404).json({
+      error_code: "NOT_FOUND",
+      reason: "Employee not found or access denied",
       failed_stage: 'DATABASE_UPDATE'
     });
   }
-};
 
+  /* ===============================
+     Send Notification (Safe)
+  =============================== */
+
+  try {
+    await sendNotification({
+      company_id,
+      user_type: "EMPLOYEE",
+      user_id: employeeId,
+      title: "Profile Updated",
+      message: changeSummary,
+      notification_type: "EMPLOYEE_UPDATE",
+      reference_type: "EMPLOYEE",
+      reference_id: employeeId,
+      action_url: `/employee/profile`
+    });
+  } catch (notifyErr) {
+    console.error("Notification failed:", notifyErr.message);
+  }
+
+  return res.json({
+    message: "Employee updated successfully",
+    updated_documents: Object.keys(uploadedFiles).filter(
+      k => k !== 'profile_photo'
+    )
+  });
+
+} catch (err) {
+  logger.error(MODULE_NAME, "Failed to update employee", err);
+  return res.status(500).json({
+    error_code: "EMPLOYEE_UPDATE_FAILED",
+    reason: err.message || "An internal error occurred",
+    failed_stage: 'DATABASE_UPDATE'
+  });
+}
+}
 /* ============================
    ACTIVATE / DEACTIVATE
  ============================ */

@@ -2,10 +2,135 @@ import db from "../../models/db.js";
 import logger from "../../utils/logger.js";
 import { sendNotification } from "../../utils/oneSignal.js";
 const MODULE_NAME = "ADMIN_LEAVE_APPROVAL_CONTROLLER";
-
+import { getS3SignedUrl } from "../../utils/s3Upload.util.js";
 /**
  * GET PENDING LEAVE REQUESTS
  */
+// export const getPendingLeaves = async (req, res) => {
+//   try {
+//     const { company_id } = req.user;
+
+//     if (!company_id) {
+//       return res.status(401).json({
+//         success: false,
+//         message: "Company context missing"
+//       });
+//     }
+
+//     // Pagination params
+//     const page = parseInt(req.query.page) || 1;
+//     const limit = parseInt(req.query.limit) || 10;
+//     const offset = (page - 1) * limit;
+
+//     /* ===========================
+//        GET TOTAL COUNT
+//     =========================== */
+//     const [[{ total }]] = await db.query(
+//       `
+//       SELECT COUNT(*) AS total
+//       FROM employee_leave_requests
+//       WHERE company_id = ?
+//         AND status = 'PENDING'
+//       `,
+//       [company_id]
+//     );
+
+//     /* ===========================
+//        GET PAGINATED DATA
+//     =========================== */
+//     const [rows] = await db.query(
+//       `
+//       SELECT
+//         elr.id,
+//         e.id AS employee_id,
+//         e.employee_code AS emp_id,
+//         e.full_name,
+
+//         d.department_name,
+
+//         s.shift_name,
+//         CONCAT(
+//           TIME_FORMAT(s.start_time, '%H:%i'),
+//           ' - ',
+//           TIME_FORMAT(s.end_time, '%H:%i')
+//         ) AS shift_timing,
+
+//         lm.leave_code,
+//         lm.leave_name,
+
+//         elr.from_date,
+//         elr.to_date,
+//         elr.total_days,
+//         elr.reason,
+//         elr.applied_at
+
+//       FROM employee_leave_requests elr
+//       JOIN employees e
+//         ON e.id = elr.employee_id
+//       LEFT JOIN departments d
+//         ON d.id = e.department_id
+//       LEFT JOIN shifts s
+//         ON s.id = e.shift_id
+//       JOIN leave_master lm
+//         ON lm.id = elr.leave_master_id
+
+//       WHERE elr.company_id = ?
+//         AND elr.status = 'PENDING'
+
+//       ORDER BY elr.applied_at ASC
+//       LIMIT ? OFFSET ?
+//       `,
+//       [company_id, limit, offset]
+//     );
+
+//     /* ===========================
+//    STATUS COUNTS (DASHBOARD)
+// =========================== */
+
+// const [[summary]] = await db.query(
+//   `
+//   SELECT
+//     SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END) AS pending_count,
+//     SUM(CASE WHEN status = 'APPROVED' THEN 1 ELSE 0 END) AS approved_count,
+//     SUM(
+//       CASE 
+//         WHEN status = 'APPROVED'
+//          AND CURDATE() BETWEEN DATE(from_date) AND DATE(to_date)
+//         THEN 1 ELSE 0
+//       END
+//     ) AS on_leave_today_count
+//   FROM employee_leave_requests
+//   WHERE company_id = ?
+//   `,
+//   [company_id]
+// );
+
+//     return res.json({
+//   success: true,
+//   meta: {
+//     total,
+//     page,
+//     limit,
+//     totalPages: Math.ceil(total / limit),
+//     count: rows.length
+//   },
+//   summary: {
+//     pending: summary.pending_count || 0,
+//     approved: summary.approved_count || 0,
+//     onLeaveToday: summary.on_leave_today_count || 0
+//   },
+//   data: rows
+// });
+
+//   } catch (error) {
+//     logger.error("LEAVE_CONTROLLER", "Failed to get pending leaves", error);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Internal server error"
+//     });
+//   }
+// };
+
 export const getPendingLeaves = async (req, res) => {
   try {
     const { company_id } = req.user;
@@ -17,7 +142,6 @@ export const getPendingLeaves = async (req, res) => {
       });
     }
 
-    // Pagination params
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
@@ -36,7 +160,7 @@ export const getPendingLeaves = async (req, res) => {
     );
 
     /* ===========================
-       GET PAGINATED DATA
+       GET PAGINATED DATA (Added profile_photo_path)
     =========================== */
     const [rows] = await db.query(
       `
@@ -45,6 +169,7 @@ export const getPendingLeaves = async (req, res) => {
         e.id AS employee_id,
         e.employee_code AS emp_id,
         e.full_name,
+        ep.profile_photo_path, -- ✅ Added
 
         d.department_name,
 
@@ -65,14 +190,11 @@ export const getPendingLeaves = async (req, res) => {
         elr.applied_at
 
       FROM employee_leave_requests elr
-      JOIN employees e
-        ON e.id = elr.employee_id
-      LEFT JOIN departments d
-        ON d.id = e.department_id
-      LEFT JOIN shifts s
-        ON s.id = e.shift_id
-      JOIN leave_master lm
-        ON lm.id = elr.leave_master_id
+      JOIN employees e ON e.id = elr.employee_id
+      LEFT JOIN employee_profiles ep ON ep.employee_id = e.id
+      LEFT JOIN departments d ON d.id = e.department_id
+      LEFT JOIN shifts s ON s.id = e.shift_id
+      JOIN leave_master lm ON lm.id = elr.leave_master_id
 
       WHERE elr.company_id = ?
         AND elr.status = 'PENDING'
@@ -84,43 +206,67 @@ export const getPendingLeaves = async (req, res) => {
     );
 
     /* ===========================
-   STATUS COUNTS (DASHBOARD)
-=========================== */
+       STATUS COUNTS
+    =========================== */
+    const [[summary]] = await db.query(
+      `
+      SELECT
+        SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END) AS pending_count,
+        SUM(CASE WHEN status = 'APPROVED' THEN 1 ELSE 0 END) AS approved_count,
+        SUM(
+          CASE 
+            WHEN status = 'APPROVED'
+             AND CURDATE() BETWEEN DATE(from_date) AND DATE(to_date)
+            THEN 1 ELSE 0
+          END
+        ) AS on_leave_today_count
+      FROM employee_leave_requests
+      WHERE company_id = ?
+      `,
+      [company_id]
+    );
 
-const [[summary]] = await db.query(
-  `
-  SELECT
-    SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END) AS pending_count,
-    SUM(CASE WHEN status = 'APPROVED' THEN 1 ELSE 0 END) AS approved_count,
-    SUM(
-      CASE 
-        WHEN status = 'APPROVED'
-         AND CURDATE() BETWEEN DATE(from_date) AND DATE(to_date)
-        THEN 1 ELSE 0
-      END
-    ) AS on_leave_today_count
-  FROM employee_leave_requests
-  WHERE company_id = ?
-  `,
-  [company_id]
-);
+    /* ===========================
+       ADD SIGNED IMAGE
+    =========================== */
+    const data = await Promise.all(
+      rows.map(async (row) => ({
+        id: row.id,
+        employee_id: row.employee_id,
+        emp_id: row.emp_id,
+        full_name: row.full_name,
+        profile_image_url: row.profile_photo_path
+          ? await getS3SignedUrl(row.profile_photo_path, 259200)
+          : null,
+        department_name: row.department_name,
+        shift_name: row.shift_name,
+        shift_timing: row.shift_timing,
+        leave_code: row.leave_code,
+        leave_name: row.leave_name,
+        from_date: row.from_date,
+        to_date: row.to_date,
+        total_days: row.total_days,
+        reason: row.reason,
+        applied_at: row.applied_at
+      }))
+    );
 
     return res.json({
-  success: true,
-  meta: {
-    total,
-    page,
-    limit,
-    totalPages: Math.ceil(total / limit),
-    count: rows.length
-  },
-  summary: {
-    pending: summary.pending_count || 0,
-    approved: summary.approved_count || 0,
-    onLeaveToday: summary.on_leave_today_count || 0
-  },
-  data: rows
-});
+      success: true,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        count: data.length
+      },
+      summary: {
+        pending: summary.pending_count || 0,
+        approved: summary.approved_count || 0,
+        onLeaveToday: summary.on_leave_today_count || 0
+      },
+      data
+    });
 
   } catch (error) {
     logger.error("LEAVE_CONTROLLER", "Failed to get pending leaves", error);
@@ -130,8 +276,6 @@ const [[summary]] = await db.query(
     });
   }
 };
-
-
 /**
  * APPROVE LEAVE
  */
@@ -505,6 +649,107 @@ export const rejectLeave = async (req, res) => {
 };
 
 
+// export const getLeaveHistory = async (req, res) => {
+//   try {
+//     const { company_id } = req.user;
+
+//     if (!company_id) {
+//       return res.status(401).json({
+//         success: false,
+//         message: "Company context missing"
+//       });
+//     }
+
+//     // Pagination params
+//     const page = parseInt(req.query.page) || 1;
+//     const limit = parseInt(req.query.limit) || 10;
+//     const offset = (page - 1) * limit;
+
+//     /* ===========================
+//        GET TOTAL COUNT
+//     =========================== */
+//     const [[{ total }]] = await db.query(
+//       `
+//       SELECT COUNT(*) AS total
+//       FROM employee_leave_requests
+//       WHERE company_id = ?
+//         AND status IN ('APPROVED','REJECTED','CANCELLED')
+//       `,
+//       [company_id]
+//     );
+
+//     /* ===========================
+//        GET PAGINATED DATA
+//     =========================== */
+//     const [rows] = await db.query(
+//       `
+//       SELECT
+//         elr.id,
+
+//         e.id AS employee_id,
+//         e.employee_code AS emp_id,
+//         e.full_name,
+
+//         d.department_name,
+
+//         s.shift_name,
+//         CONCAT(
+//           TIME_FORMAT(s.start_time, '%H:%i'),
+//           ' - ',
+//           TIME_FORMAT(s.end_time, '%H:%i')
+//         ) AS shift_timing,
+
+//         lm.leave_code,
+//         lm.leave_name,
+
+//         elr.from_date,
+//         elr.to_date,
+//         elr.total_days,
+//         elr.status,
+//         elr.applied_at
+
+//       FROM employee_leave_requests elr
+//       JOIN employees e
+//         ON e.id = elr.employee_id
+//       LEFT JOIN departments d
+//         ON d.id = e.department_id
+//       LEFT JOIN shifts s
+//         ON s.id = e.shift_id
+//       JOIN leave_master lm
+//         ON lm.id = elr.leave_master_id
+
+//       WHERE elr.company_id = ?
+//         AND elr.status IN ('APPROVED','REJECTED','CANCELLED')
+
+//       ORDER BY elr.applied_at DESC
+//       LIMIT ? OFFSET ?
+//       `,
+//       [company_id, limit, offset]
+//     );
+
+//     return res.status(200).json({
+//       success: true,
+//       meta: {
+//         total,
+//         page,
+//         limit,
+//         totalPages: Math.ceil(total / limit),
+//         count: rows.length
+//       },
+//       data: rows
+//     });
+
+//   } catch (err) {
+//     logger.error(MODULE_NAME, "Failed to fetch leave history", err);
+//     return res.status(500).json({
+//       success: false,
+//       message: "Failed to fetch leave history"
+//     });
+//   }
+// };
+
+
+
 export const getLeaveHistory = async (req, res) => {
   try {
     const { company_id } = req.user;
@@ -516,7 +761,6 @@ export const getLeaveHistory = async (req, res) => {
       });
     }
 
-    // Pagination params
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
@@ -535,7 +779,7 @@ export const getLeaveHistory = async (req, res) => {
     );
 
     /* ===========================
-       GET PAGINATED DATA
+       GET PAGINATED DATA (Added profile_photo_path)
     =========================== */
     const [rows] = await db.query(
       `
@@ -545,6 +789,7 @@ export const getLeaveHistory = async (req, res) => {
         e.id AS employee_id,
         e.employee_code AS emp_id,
         e.full_name,
+        ep.profile_photo_path,  -- ✅ Added
 
         d.department_name,
 
@@ -565,14 +810,11 @@ export const getLeaveHistory = async (req, res) => {
         elr.applied_at
 
       FROM employee_leave_requests elr
-      JOIN employees e
-        ON e.id = elr.employee_id
-      LEFT JOIN departments d
-        ON d.id = e.department_id
-      LEFT JOIN shifts s
-        ON s.id = e.shift_id
-      JOIN leave_master lm
-        ON lm.id = elr.leave_master_id
+      JOIN employees e ON e.id = elr.employee_id
+      LEFT JOIN employee_profiles ep ON ep.employee_id = e.id
+      LEFT JOIN departments d ON d.id = e.department_id
+      LEFT JOIN shifts s ON s.id = e.shift_id
+      JOIN leave_master lm ON lm.id = elr.leave_master_id
 
       WHERE elr.company_id = ?
         AND elr.status IN ('APPROVED','REJECTED','CANCELLED')
@@ -583,6 +825,31 @@ export const getLeaveHistory = async (req, res) => {
       [company_id, limit, offset]
     );
 
+    /* ===========================
+       ADD SIGNED IMAGE
+    =========================== */
+    const data = await Promise.all(
+      rows.map(async (row) => ({
+        id: row.id,
+        employee_id: row.employee_id,
+        emp_id: row.emp_id,
+        full_name: row.full_name,
+        profile_image_url: row.profile_photo_path
+          ? await getS3SignedUrl(row.profile_photo_path, 259200)
+          : null,
+        department_name: row.department_name,
+        shift_name: row.shift_name,
+        shift_timing: row.shift_timing,
+        leave_code: row.leave_code,
+        leave_name: row.leave_name,
+        from_date: row.from_date,
+        to_date: row.to_date,
+        total_days: row.total_days,
+        status: row.status,
+        applied_at: row.applied_at
+      }))
+    );
+
     return res.status(200).json({
       success: true,
       meta: {
@@ -590,19 +857,18 @@ export const getLeaveHistory = async (req, res) => {
         page,
         limit,
         totalPages: Math.ceil(total / limit),
-        count: rows.length
+        count: data.length
       },
-      data: rows
+      data
     });
 
   } catch (err) {
-    logger.error(MODULE_NAME, "Failed to fetch leave history", err);
+    logger.error("LEAVE_HISTORY", "Failed to fetch leave history", err);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch leave history"
     });
   }
 };
-
 
 

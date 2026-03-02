@@ -14,6 +14,201 @@ import { sendNotification } from "../../utils/oneSignal.js";
 
 
 
+// export const getEmployeesByForm = async (req, res) => {
+//   try {
+//     const {
+//       formCode,
+//       periodType,
+//       financialYear,
+//       year,
+//       month,
+//       branchId,
+//       departmentId
+//     } = req.query;
+
+//     /* =====================
+//        VALIDATION
+//     ===================== */
+//     if (!formCode || !periodType) {
+//       return res.status(400).json({
+//         message: "formCode and periodType are required"
+//       });
+//     }
+
+//     if (periodType === "FY" && !financialYear) {
+//       return res.status(400).json({
+//         message: "financialYear is required for FY forms"
+//       });
+//     }
+
+//     if (periodType === "MONTH" && (!year || !month)) {
+//       return res.status(400).json({
+//         message: "year and month are required for MONTH forms"
+//       });
+//     }
+
+//     const companyId = req.user.company_id;
+
+//     /* =====================
+//        JOIN CONDITIONS
+//     ===================== */
+//     let joinCondition = `
+//       efd.employee_id = e.id
+//       AND efd.form_code = ?
+//       AND efd.period_type = ?
+//     `;
+//     const params = [formCode, periodType];
+
+//     if (periodType === "FY") {
+//       joinCondition += " AND efd.financial_year = ?";
+//       params.push(financialYear);
+//     } else {
+//       joinCondition += " AND efd.doc_year = ? AND efd.doc_month = ?";
+//       params.push(year, month);
+//     }
+
+//     /* =====================
+//        WHERE CONDITIONS
+//     ===================== */
+//     let whereClause = `
+//       WHERE e.company_id = ?
+//       AND e.employee_status = 'ACTIVE'
+//     `;
+//     params.push(companyId);
+
+//     if (branchId) {
+//       whereClause += " AND e.branch_id = ?";
+//       params.push(branchId);
+//     }
+
+//     if (departmentId) {
+//       whereClause += " AND e.department_id = ?";
+//       params.push(departmentId);
+//     }
+
+//     /* =====================
+//        FINAL QUERY
+//     ===================== */
+//     const sql = `
+//       SELECT
+//         e.id AS employee_id,
+//         e.employee_code,
+//         e.full_name,
+//         e.phone,
+//         e.joining_date,
+
+//         e.branch_id,
+//         b.branch_name,
+
+//         e.department_id,
+//         d.department_name,
+
+//         efd.id AS document_id,
+//         efd.created_at AS uploaded_at,
+//         efd.storage_object_key
+
+//       FROM employees e
+
+//       LEFT JOIN branches b
+//         ON b.id = e.branch_id
+
+//       LEFT JOIN departments d
+//         ON d.id = e.department_id
+
+//       LEFT JOIN employee_form_documents efd
+//         ON ${joinCondition}
+
+//       ${whereClause}
+//       ORDER BY e.employee_code
+//     `;
+
+//     const [rows] = await db.query(sql, params);
+
+//     /* =====================
+//        RESPONSE BUILD
+//     ===================== */
+//     const available = [];
+//     const missing = [];
+
+//     for (const row of rows) {
+//       if (row.document_id && row.storage_object_key) {
+
+//         const viewUrl = await getS3SignedUrl(
+//           row.storage_object_key,
+//           259200,
+//           { disposition: "inline" }
+//         );
+
+//         const downloadUrl = await getS3SignedUrl(
+//           row.storage_object_key,
+//           259200,
+//           { disposition: "attachment" }
+//         );
+
+//         available.push({
+//           employee_id: row.employee_id,
+//           employee_code: row.employee_code,
+//           full_name: row.full_name,
+//           phone: row.phone,
+//           joining_date: row.joining_date,
+
+//           branch_id: row.branch_id,
+//           branch_name: row.branch_name,
+
+//           department_id: row.department_id,
+//           department_name: row.department_name,
+
+//           document_id: row.document_id,
+//           uploaded_at: row.uploaded_at,
+
+//           view_url: viewUrl,
+//           download_url: downloadUrl
+//         });
+
+//       } else {
+//         missing.push({
+//           employee_id: row.employee_id,
+//           employee_code: row.employee_code,
+//           full_name: row.full_name,
+//           phone: row.phone,
+//           joining_date: row.joining_date,
+
+//           branch_id: row.branch_id,
+//           branch_name: row.branch_name,
+
+//           department_id: row.department_id,
+//           department_name: row.department_name,
+
+//           document_id: null,
+//           uploaded_at: null,
+//           view_url: null,
+//           download_url: null
+//         });
+//       }
+//     }
+
+//     /* =====================
+//        FINAL RESPONSE
+//     ===================== */
+//     return res.json({
+//       summary: {
+//         total: rows.length,
+//         available: available.length,
+//         missing: missing.length
+//       },
+//       available,
+//       missing
+//     });
+
+//   } catch (error) {
+//     console.error("GET EMPLOYEE FORMS ERROR:", error);
+//     return res.status(500).json({
+//       message: "Internal server error"
+//     });
+//   }
+// };
+
+
 export const getEmployeesByForm = async (req, res) => {
   try {
     const {
@@ -26,9 +221,6 @@ export const getEmployeesByForm = async (req, res) => {
       departmentId
     } = req.query;
 
-    /* =====================
-       VALIDATION
-    ===================== */
     if (!formCode || !periodType) {
       return res.status(400).json({
         message: "formCode and periodType are required"
@@ -49,14 +241,13 @@ export const getEmployeesByForm = async (req, res) => {
 
     const companyId = req.user.company_id;
 
-    /* =====================
-       JOIN CONDITIONS
-    ===================== */
+    /* ===================== JOIN ===================== */
     let joinCondition = `
       efd.employee_id = e.id
       AND efd.form_code = ?
       AND efd.period_type = ?
     `;
+
     const params = [formCode, periodType];
 
     if (periodType === "FY") {
@@ -67,9 +258,7 @@ export const getEmployeesByForm = async (req, res) => {
       params.push(year, month);
     }
 
-    /* =====================
-       WHERE CONDITIONS
-    ===================== */
+    /* ===================== WHERE ===================== */
     let whereClause = `
       WHERE e.company_id = ?
       AND e.employee_status = 'ACTIVE'
@@ -86,9 +275,7 @@ export const getEmployeesByForm = async (req, res) => {
       params.push(departmentId);
     }
 
-    /* =====================
-       FINAL QUERY
-    ===================== */
+    /* ===================== QUERY ===================== */
     const sql = `
       SELECT
         e.id AS employee_id,
@@ -103,20 +290,18 @@ export const getEmployeesByForm = async (req, res) => {
         e.department_id,
         d.department_name,
 
+        ep.profile_photo_path,
+
         efd.id AS document_id,
         efd.created_at AS uploaded_at,
         efd.storage_object_key
 
       FROM employees e
 
-      LEFT JOIN branches b
-        ON b.id = e.branch_id
-
-      LEFT JOIN departments d
-        ON d.id = e.department_id
-
-      LEFT JOIN employee_form_documents efd
-        ON ${joinCondition}
+      LEFT JOIN branches b ON b.id = e.branch_id
+      LEFT JOIN departments d ON d.id = e.department_id
+      LEFT JOIN employee_profiles ep ON ep.employee_id = e.id
+      LEFT JOIN employee_form_documents efd ON ${joinCondition}
 
       ${whereClause}
       ORDER BY e.employee_code
@@ -124,72 +309,73 @@ export const getEmployeesByForm = async (req, res) => {
 
     const [rows] = await db.query(sql, params);
 
-    /* =====================
-       RESPONSE BUILD
-    ===================== */
-    const available = [];
-    const missing = [];
+    /* ===================== RESPONSE BUILD ===================== */
 
-    for (const row of rows) {
-      if (row.document_id && row.storage_object_key) {
+    const results = await Promise.all(
+      rows.map(async (row) => {
 
-        const viewUrl = await getS3SignedUrl(
-          row.storage_object_key,
-          259200,
-          { disposition: "inline" }
-        );
+        const profileImageUrl = row.profile_photo_path
+          ? await getS3SignedUrl(row.profile_photo_path, 259200)
+          : null;
 
-        const downloadUrl = await getS3SignedUrl(
-          row.storage_object_key,
-          259200,
-          { disposition: "attachment" }
-        );
-
-        available.push({
+        const baseEmployee = {
           employee_id: row.employee_id,
           employee_code: row.employee_code,
           full_name: row.full_name,
           phone: row.phone,
           joining_date: row.joining_date,
-
           branch_id: row.branch_id,
           branch_name: row.branch_name,
-
           department_id: row.department_id,
           department_name: row.department_name,
+          profile_image_url: profileImageUrl
+        };
 
-          document_id: row.document_id,
-          uploaded_at: row.uploaded_at,
+        if (row.document_id && row.storage_object_key) {
 
-          view_url: viewUrl,
-          download_url: downloadUrl
-        });
+          const [viewUrl, downloadUrl] = await Promise.all([
+            getS3SignedUrl(row.storage_object_key, 259200, {
+              disposition: "inline"
+            }),
+            getS3SignedUrl(row.storage_object_key, 259200, {
+              disposition: "attachment"
+            })
+          ]);
 
-      } else {
-        missing.push({
-          employee_id: row.employee_id,
-          employee_code: row.employee_code,
-          full_name: row.full_name,
-          phone: row.phone,
-          joining_date: row.joining_date,
+          return {
+            type: "available",
+            data: {
+              ...baseEmployee,
+              document_id: row.document_id,
+              uploaded_at: row.uploaded_at,
+              view_url: viewUrl,
+              download_url: downloadUrl
+            }
+          };
 
-          branch_id: row.branch_id,
-          branch_name: row.branch_name,
+        } else {
+          return {
+            type: "missing",
+            data: {
+              ...baseEmployee,
+              document_id: null,
+              uploaded_at: null,
+              view_url: null,
+              download_url: null
+            }
+          };
+        }
+      })
+    );
 
-          department_id: row.department_id,
-          department_name: row.department_name,
+    const available = results
+      .filter(r => r.type === "available")
+      .map(r => r.data);
 
-          document_id: null,
-          uploaded_at: null,
-          view_url: null,
-          download_url: null
-        });
-      }
-    }
+    const missing = results
+      .filter(r => r.type === "missing")
+      .map(r => r.data);
 
-    /* =====================
-       FINAL RESPONSE
-    ===================== */
     return res.json({
       summary: {
         total: rows.length,
@@ -207,7 +393,6 @@ export const getEmployeesByForm = async (req, res) => {
     });
   }
 };
-
 
 export const uploadEmployeeForm = async (req, res) => {
   try {
@@ -497,7 +682,8 @@ export const replaceEmployeeForm = async (req, res) => {
         storage_object_key = ?,
         storage_bucket = ?,
         uploaded_by_role = ?,
-        uploaded_by_id = ?
+        uploaded_by_id = ?,
+        updated_at = ?,
       WHERE id = ?
       `,
       [

@@ -468,6 +468,10 @@ export const getEmployeeByIdService = async (
       p.ifsc_code,
       p.bank_branch_name,
       p.profile_photo_path,
+      p.pan_number,
+      p.aadhaar_number,
+      p.uan_number,
+      p.esic_number,
 
       b.branch_name,
       d.department_name,
@@ -647,21 +651,27 @@ export const getEmployeeByIdService = async (
     },
 
     profile: {
-      gender: row.gender,
-      dob: row.dob,
-      religion: row.religion,
-      father_name: row.father_name,
-      marital_status: row.marital_status,
-      qualification: row.qualification,
-      emergency_contact: row.emergency_contact,
-      address: row.address,
-      permanent_address: row.permanent_address,
-      bank_name: row.bank_name,
-      account_number: row.account_number,
-      ifsc_code: row.ifsc_code,
-      bank_branch_name: row.bank_branch_name,
-      profile_photo_url
-    },
+  gender: row.gender,
+  dob: row.dob,
+  religion: row.religion,
+  father_name: row.father_name,
+  marital_status: row.marital_status,
+  qualification: row.qualification,
+  emergency_contact: row.emergency_contact,
+  address: row.address,
+  permanent_address: row.permanent_address,
+  bank_name: row.bank_name,
+  account_number: row.account_number,
+  ifsc_code: row.ifsc_code,
+  bank_branch_name: row.bank_branch_name,
+  profile_photo_url,
+
+  // ✅ NEW STATUTORY NUMBERS (Clean Source)
+  pan_number: row.pan_number || "",
+  aadhaar_number: row.aadhaar_number || "",
+  uan_number: row.uan_number || "",
+  esic_number: row.esic_number || ""
+},
 
     auth: {
       is_active: row.auth_is_active,

@@ -1,72 +1,187 @@
 import db from "../../models/db.js";
+import { getS3SignedUrl } from "../../utils/s3Upload.util.js";
 import { sendNotification } from "../../utils/oneSignal.js";
 /* =========================================================
    GET ALL SUPPORT TICKETS (COMPANY ADMIN / HR)
    Filters: branch_id, status, search
 ========================================================= */
+// export const getAllSupportTickets = async (req, res) => {
+//   try {
+//     const { company_id } = req.user;
+//     const { branch_id, status, search } = req.query;
+
+//     // Pagination params
+//     const page = parseInt(req.query.page) || 1;
+//     const limit = parseInt(req.query.limit) || 10;
+//     const offset = (page - 1) * limit;
+
+//     let conditions = [`company_id = ?`];
+//     let params = [company_id];
+
+//     if (branch_id) {
+//       conditions.push(`branch_id = ?`);
+//       params.push(branch_id);
+//     }
+
+//     if (status) {
+//       conditions.push(`status = ?`);
+//       params.push(status);
+//     }
+
+//     if (search) {
+//       conditions.push(
+//         `(employee_name LIKE ? OR employee_email LIKE ? OR category LIKE ?)`
+//       );
+//       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+//     }
+
+//     const whereClause = conditions.join(" AND ");
+
+//     // 1️⃣ Get total count
+//     const [[countResult]] = await db.query(
+//       `SELECT COUNT(*) as total
+//        FROM company_support_tickets
+//        WHERE ${whereClause}`,
+//       params
+//     );
+
+//     const total = countResult.total;
+//     const totalPages = Math.ceil(total / limit);
+
+//     // 2️⃣ Get paginated data
+//     const [tickets] = await db.query(
+//       `SELECT
+//          id,
+//          employee_name,
+//          employee_email,
+//          branch_id,
+//          category,
+//          status,
+//          created_at
+//        FROM company_support_tickets
+//        WHERE ${whereClause}
+//        ORDER BY created_at DESC
+//        LIMIT ? OFFSET ?`,
+//       [...params, limit, offset]
+//     );
+
+//     res.json({
+//       success: true,
+//       data: tickets,
+//       pagination: {
+//         total,
+//         totalPages,
+//         currentPage: page,
+//         limit
+//       }
+//     });
+
+//   } catch (error) {
+//     console.error("getAllSupportTickets error:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "Failed to fetch support tickets"
+//     });
+//   }
+// };
+
+
 export const getAllSupportTickets = async (req, res) => {
   try {
     const { company_id } = req.user;
     const { branch_id, status, search } = req.query;
 
-    // Pagination params
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
-    let conditions = [`company_id = ?`];
+    let conditions = [`cst.company_id = ?`];
     let params = [company_id];
 
     if (branch_id) {
-      conditions.push(`branch_id = ?`);
+      conditions.push(`cst.branch_id = ?`);
       params.push(branch_id);
     }
 
     if (status) {
-      conditions.push(`status = ?`);
+      conditions.push(`cst.status = ?`);
       params.push(status);
     }
 
     if (search) {
       conditions.push(
-        `(employee_name LIKE ? OR employee_email LIKE ? OR category LIKE ?)`
+        `(e.full_name LIKE ? OR e.employee_code LIKE ? OR cst.category LIKE ?)`
       );
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
 
     const whereClause = conditions.join(" AND ");
 
-    // 1️⃣ Get total count
+    /* =========================
+       TOTAL COUNT
+    ========================= */
     const [[countResult]] = await db.query(
-      `SELECT COUNT(*) as total
-       FROM company_support_tickets
-       WHERE ${whereClause}`,
+      `
+      SELECT COUNT(*) as total
+      FROM company_support_tickets cst
+      LEFT JOIN employees e ON e.id = cst.employee_id
+      WHERE ${whereClause}
+      `,
       params
     );
 
     const total = countResult.total;
     const totalPages = Math.ceil(total / limit);
 
-    // 2️⃣ Get paginated data
+    /* =========================
+       FETCH DATA
+    ========================= */
     const [tickets] = await db.query(
-      `SELECT
-         id,
-         employee_name,
-         employee_email,
-         branch_id,
-         category,
-         status,
-         created_at
-       FROM company_support_tickets
-       WHERE ${whereClause}
-       ORDER BY created_at DESC
-       LIMIT ? OFFSET ?`,
+      `
+      SELECT
+        cst.id,
+        cst.employee_id,
+        e.employee_code,
+        e.full_name,
+        e.email,
+        ep.profile_photo_path,
+        cst.branch_id,
+        cst.category,
+        cst.status,
+        cst.created_at
+      FROM company_support_tickets cst
+      LEFT JOIN employees e ON e.id = cst.employee_id
+      LEFT JOIN employee_profiles ep ON ep.employee_id = e.id
+      WHERE ${whereClause}
+      ORDER BY cst.created_at DESC
+      LIMIT ? OFFSET ?
+      `,
       [...params, limit, offset]
+    );
+
+    /* =========================
+       ADD SIGNED IMAGE URL
+    ========================= */
+    const formattedTickets = await Promise.all(
+      tickets.map(async (ticket) => ({
+        id: ticket.id,
+        employee_id: ticket.employee_id,
+        employee_code: ticket.employee_code,
+        employee_name: ticket.full_name,
+        employee_email: ticket.email,
+        profile_image_url: ticket.profile_photo_path
+          ? await getS3SignedUrl(ticket.profile_photo_path)
+          : null,
+        branch_id: ticket.branch_id,
+        category: ticket.category,
+        status: ticket.status,
+        created_at: ticket.created_at
+      }))
     );
 
     res.json({
       success: true,
-      data: tickets,
+      data: formattedTickets,
       pagination: {
         total,
         totalPages,
@@ -83,7 +198,6 @@ export const getAllSupportTickets = async (req, res) => {
     });
   }
 };
-
 /* =========================================================
    GET SINGLE SUPPORT TICKET (DETAIL VIEW)
 ========================================================= */
